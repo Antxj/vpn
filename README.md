@@ -184,6 +184,42 @@ Ao clicar em **Atualizar agora**:
 - Arquivos `.ovpn` estão no `.gitignore` (contêm chave privada) — **nunca**
   os commite neste repositório
 
+## Privacidade
+
+O app não coleta nem envia dados do usuário. As únicas conexões de rede são:
+
+- as **VPNs configuradas pelo próprio usuário** (servidores definidos nos
+  arquivos `.ovpn` de cada conta);
+- a **verificação de versões novas** no GitHub (descrita em
+  [Atualizações](#atualizações)), que não envia dados do usuário — o GitHub vê
+  apenas o IP e a versão do app — e pode ser desligada em **Contas** ›
+  "Procurar novas versões automaticamente". Vale a
+  [política de privacidade do GitHub](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
+
+Contas, senhas e seeds ficam somente no computador, criptografadas (ver
+[Segurança](#segurança)).
+
+## Desinstalação
+
+O app não tem instalador: basta sair dele (bandeja › **Sair**) e apagar o
+`VPN.exe`. Para remover também as contas salvas e os logs, apague a pasta
+`%APPDATA%\VPN`. Se o OpenVPN Community foi instalado pelo app, ele pode ser
+removido em **Configurações do Windows › Aplicativos › Aplicativos
+instalados › OpenVPN**.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org).
+
+- Autores e revisores (committers and reviewers): [Antxj](https://github.com/Antxj)
+- Aprovadores (approvers): [Antxj](https://github.com/Antxj)
+
+Os executáveis assinados são gerados exclusivamente pelo
+[workflow de release](.github/workflows/release.yml) no GitHub Actions, a
+partir do código deste repositório, e cada release é aprovado manualmente
+antes da assinatura. Privacidade: ver [Privacidade](#privacidade).
+
 ## Licença
 
 [GPL-3.0-or-later](LICENSE). Componentes de terceiros (o instalador oficial do

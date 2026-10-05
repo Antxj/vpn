@@ -87,6 +87,14 @@ AVISOS
 - Guarde a seed/QR Code com o mesmo cuidado que uma senha: quem tiver
   a seed consegue gerar seus tokens.
 
+DESINSTALAR
+-----------
+O programa não tem instalador: saia dele (botão direito no ícone da
+bandeja > "Sair") e apague o VPN.exe. Para apagar também as contas
+salvas e os logs, apague a pasta %APPDATA%\VPN. Se o OpenVPN foi
+instalado pelo programa, ele pode ser removido em Configurações do
+Windows > Aplicativos > Aplicativos instalados > OpenVPN.
+
 ONDE FICAM OS DADOS
 -------------------
 %APPDATA%\VPN\contas.dat (criptografado com sua conta Windows - ninguém
