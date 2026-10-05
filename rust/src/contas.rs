@@ -26,9 +26,9 @@ impl Autenticacao {
 
     pub fn rotulo(self) -> &'static str {
         match self {
-            Autenticacao::Token => "Token (Google Authenticator)",
-            Autenticacao::Senha => "Senha fixa",
-            Autenticacao::SenhaMaisToken => "Senha + token",
+            Autenticacao::Token => tr!("Token (Google Authenticator)", "Token (Google Authenticator)"),
+            Autenticacao::Senha => tr!("Senha fixa", "Fixed password"),
+            Autenticacao::SenhaMaisToken => tr!("Senha + token", "Password + token"),
         }
     }
 
@@ -56,6 +56,11 @@ pub struct Conta {
     /// Senha fixa quando a autenticacao usa senha.
     #[serde(default)]
     pub senha: String,
+    /// Tipo de tunel observado na ultima conexao: Some(true) = toda a
+    /// internet passa pela VPN; Some(false) = so a rede da VPN. None = ainda
+    /// nao conectou (ou o arquivo .ovpn mudou desde entao).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tunel_completo: Option<bool>,
 }
 
 static CONTADOR_ID: AtomicU64 = AtomicU64::new(0);
@@ -81,10 +86,18 @@ impl Conta {
     pub fn nome_exibicao(&self) -> &str {
         let nome = self.nome.trim();
         if nome.is_empty() {
-            "Sem nome"
+            tr!("Sem nome", "Unnamed")
         } else {
             nome
         }
+    }
+
+    /// Toda a internet passa por esta VPN? Usa o que foi observado na
+    /// ultima conexao; sem isso, o que o arquivo .ovpn diz (o servidor ainda
+    /// pode mandar a rota padrao, o que so se descobre ao conectar).
+    pub fn tunel_completo(&self) -> Option<bool> {
+        self.tunel_completo
+            .or_else(|| redireciona_tudo(Path::new(&self.config)).then_some(true))
     }
 
     /// Nome do arquivo .ovpn (sem o caminho), para exibir.
@@ -99,23 +112,25 @@ impl Conta {
     /// Retorna a mensagem para o usuario quando falta algo.
     pub fn validar(&self) -> Result<(), String> {
         if self.nome.trim().is_empty() {
-            return Err("Informe um nome para a conta.".into());
+            return Err(tr!("Informe um nome para a conta.", "Enter a name for the account.").into());
         }
         if self.config.trim().is_empty() || !Path::new(&self.config).exists() {
-            return Err("Escolha um arquivo .ovpn válido.".into());
+            return Err(tr!("Escolha um arquivo .ovpn válido.", "Choose a valid .ovpn file.").into());
         }
         if self.usuario.trim().is_empty() {
-            return Err("Informe o usuário.".into());
+            return Err(tr!("Informe o usuário.", "Enter the username.").into());
         }
         if self.autenticacao.usa_token() && totp::normalize_seed(&self.seed).is_none() {
-            return Err(
+            return Err(tr!(
                 "Seed inválida (não é base32). Copie a chave do cadastro do \
-                 Google Authenticator ou use Importar QR Code."
-                    .into(),
-            );
+                 Google Authenticator ou use Importar QR Code.",
+                "Invalid seed (not base32). Copy the key from the Google \
+                 Authenticator enrollment or use Import QR code."
+            )
+            .into());
         }
         if self.autenticacao.usa_senha() && self.senha.is_empty() {
-            return Err("Informe a senha.".into());
+            return Err(tr!("Informe a senha.", "Enter the password.").into());
         }
         Ok(())
     }
@@ -164,6 +179,7 @@ mod tests {
             autenticacao: Autenticacao::Token,
             seed: SEED.into(),
             senha: String::new(),
+            tunel_completo: None,
         }
     }
 

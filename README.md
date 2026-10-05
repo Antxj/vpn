@@ -48,9 +48,18 @@ periódicas e as reconexões após queda funcionam sem intervenção.
 - **Conexões simultâneas**: cada uma precisa de um adaptador de rede virtual
   próprio; se todos estiverem ocupados, o app cria mais um sozinho (com o
   `tapctl.exe` do próprio OpenVPN) e tenta de novo
-- **Aviso de rotas conflitantes**: se duas contas mandam todo o tráfego pela
-  VPN (`redirect-gateway`), o app avisa antes de conectar a segunda — só a
-  última funcionaria como rota padrão
+- **Túnel completo e túnel dividido juntos**: cada cartão mostra se a VPN
+  leva **toda a internet** (túnel completo) ou **só a rede da VPN** (túnel
+  dividido) — o app descobre isso na primeira conexão, pelas rotas que o
+  servidor criou. Uma de cada pode ficar ligada ao mesmo tempo, em qualquer
+  ordem: antes de ligar uma VPN de túnel dividido, o app fixa uma rota direta
+  (pela rede local) até o servidor dela, para que ela não caia quando a de
+  túnel completo ligar (detalhes em [Rotas](#rotas))
+- **Aviso de rotas conflitantes**: se duas contas mandam toda a internet pela
+  VPN, o app avisa antes de conectar a segunda — só a última funcionaria como
+  rota padrão
+- **Português ou inglês**: segue o idioma do Windows; dá para fixar um dos
+  dois em **Contas** › Idioma
 - **Importação por QR Code**: o mesmo QR usado para cadastrar o Google
   Authenticator preenche usuário e seed (arquivo de imagem ou print colado)
 - **Instância única**: abrir o exe de novo só restaura a janela existente
@@ -105,7 +114,8 @@ o Visual Studio Build Tools.
 
 ```powershell
 cd rust
-cargo test               # TOTP, contas, estado, adaptadores, QR, MSI, atualizacao
+cargo test               # TOTP, contas, estado, adaptadores, QR, MSI, atualizacao, rotas, idioma
+cargo test -- --ignored rota_direta   # cria e remove uma rota de verdade (precisa de admin)
 .\build-release.ps1      # baixa e confere o MSI, testa e gera o release (~12 MB)
 ```
 
@@ -127,6 +137,10 @@ Estrutura:
   escrito pelas conexões, lido pela interface e pela bandeja
 - [`contas.rs`](rust/src/contas.rs) — modelo de conta, autenticação e validação
 - [`dpapi.rs`](rust/src/dpapi.rs) — criptografia e persistência
+- [`rotas.rs`](rust/src/rotas.rs) — rota direta até o servidor e detecção do
+  tipo de túnel (IP Helper do Windows)
+- [`i18n.rs`](rust/src/i18n.rs) — idioma (português/inglês) e as macros
+  `tr!`/`trf!` dos textos
 - [`atualizacao.rs`](rust/src/atualizacao.rs) — verificação e instalação de
   versões novas (WinHTTP, SHA-256 pelo BCrypt e assinatura pelo WinVerifyTrust)
 - [`totp.rs`](rust/src/totp.rs) (RFC 6238), [`qr.rs`](rust/src/qr.rs),
@@ -141,6 +155,7 @@ Variáveis úteis para desenvolvimento e testes:
 | `VPN_INSTANCIA` | separa uma instância de teste do app de uso diário |
 | `VPN_SKIP_HINT` | não mostra o aviso da primeira ida à bandeja |
 | `VPN_CAPTURA` | capturas de tela da documentação: esconde o aviso de administrador; com `contas`, `editar`, `nova` ou `atualizacao`, abre direto naquela tela |
+| `VPN_IDIOMA` | força `pt` ou `en` (capturas de tela) |
 | `VPN_ATUALIZACAO_URL` | consulta outro endereço no lugar da API do GitHub (testes da atualização) |
 | `APPDATA` | redirecione para uma pasta de teste para não tocar nas contas reais |
 
@@ -170,6 +185,35 @@ Ao clicar em **Atualizar agora**:
    seguinte) e o novo ocupa o lugar dele;
 4. o app desconecta as VPNs, fecha, e a versão nova abre sozinha e religa as
    contas que estavam conectadas.
+
+## Rotas
+
+Há dois tipos de VPN:
+
+- **túnel completo** (*full tunnel*): toda a internet sai pela VPN — o
+  servidor manda `redirect-gateway` e o OpenVPN cria as rotas `0.0.0.0/1` e
+  `128.0.0.0/1` pela VPN;
+- **túnel dividido** (*split tunnel*): só as redes da empresa vão pela VPN; o
+  resto usa a internet normal.
+
+Uma de cada ao mesmo tempo funciona, porque o Windows usa sempre a rota mais
+específica. O problema era outro: ao ligar a de túnel completo, o tráfego da de
+túnel dividido **até o próprio servidor** passava a ir por dentro da outra, e
+ela caía. Por isso, antes de iniciar uma VPN que não é de túnel completo, o app
+cria uma rota `/32` para cada servidor do `.ovpn` pelo gateway da rede local
+(ignorando adaptadores de VPN). A rota é removida quando a conexão termina e
+nunca sobrevive a uma reinicialização do Windows.
+
+O tipo de cada VPN é descoberto ao conectar: o app olha se o adaptador dela
+recebeu a rota padrão (ou as duas metades `0.0.0.0/1` + `128.0.0.0/1`). Isso
+pega também o caso comum em que o `redirect-gateway` vem do servidor e não do
+arquivo. O resultado fica salvo na conta, aparece no cartão e alimenta o aviso
+de duas VPNs de túnel completo. Trocar o arquivo `.ovpn` da conta apaga o tipo
+salvo.
+
+Limite conhecido: com as duas ligadas, nomes internos da VPN de túnel dividido
+(como `intranet.empresa.local`) podem deixar de resolver se a de túnel
+completo assumir o DNS. Se isso acontecer, abra uma issue.
 
 ## Segurança
 

@@ -194,7 +194,13 @@ fn log_path(conta_id: &str) -> PathBuf {
 fn fresh_token(seed: &str, force_next: bool, stop: &AtomicBool, nome: &str) -> Option<String> {
     let remaining = totp::seconds_remaining();
     if force_next || remaining < totp::MIN_TOKEN_LIFETIME {
-        estado::log(nome, format!("Aguardando próxima janela do token ({remaining}s)..."));
+        estado::log(
+            nome,
+            trf!(
+                "Aguardando próxima janela do token ({remaining}s)...",
+                "Waiting for the next token window ({remaining}s)..."
+            ),
+        );
         let deadline = Instant::now() + Duration::from_millis(remaining * 1000 + 500);
         while Instant::now() < deadline {
             if stop.load(Ordering::SeqCst) {
@@ -226,7 +232,7 @@ fn criar_adaptador(openvpn: &Path, hwid: &str) -> Result<(), String> {
         .args(["create", "--hwid", hwid])
         .creation_flags(CREATE_NO_WINDOW)
         .output()
-        .map_err(|e| format!("não consegui executar o tapctl: {e}"))?;
+        .map_err(|e| trf!("não consegui executar o tapctl: {e}", "could not run tapctl: {e}"))?;
     if saida.status.success() {
         Ok(())
     } else {
@@ -243,6 +249,31 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
     estado::definir(&conta.id, Situacao::Conectando, None);
     std::thread::spawn(move || {
         let nome = conta.nome_exibicao().to_string();
+        // VPN de tunel dividido: o caminho ate o servidor fica fixo na rede
+        // local, para nao cair quando outra VPN (de tunel completo) ligar.
+        // As rotas vivem ate o fim desta thread (Drop as remove).
+        let _rotas = if conta.tunel_completo() == Some(true) {
+            None
+        } else {
+            match crate::rotas::fixar_servidores(Path::new(&conta.config)) {
+                Ok(r) => {
+                    let ips: Vec<String> = r.ips.iter().map(|ip| ip.to_string()).collect();
+                    estado::log(
+                        &nome,
+                        trf!(
+                            "Servidor {} fixado na rede local.",
+                            "Server {} pinned to the local network.",
+                            ips.join(", ")
+                        ),
+                    );
+                    Some(r)
+                }
+                Err(e) => {
+                    estado::log(&nome, trf!("Sem rota fixa para o servidor: {e}", "No pinned route to the server: {e}"));
+                    None
+                }
+            }
+        };
         // ate 2 tentativas: a segunda so acontece se faltou adaptador de rede
         for tentativa in 0..2 {
             let Some(hwid) = run(&conta, &nome, &openvpn, &stop2) else {
@@ -251,14 +282,28 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
             if tentativa > 0 || stop2.load(Ordering::SeqCst) {
                 break;
             }
-            estado::log(&nome, "Todos os adaptadores de rede estão em uso; criando mais um...");
+            estado::log(
+                &nome,
+                tr!(
+                    "Todos os adaptadores de rede estão em uso; criando mais um...",
+                    "All network adapters are in use; creating another one..."
+                ),
+            );
             match criar_adaptador(&openvpn, hwid) {
-                Ok(()) => estado::log(&nome, "Adaptador criado. Conectando de novo..."),
+                Ok(()) => estado::log(
+                    &nome,
+                    tr!("Adaptador criado. Conectando de novo...", "Adapter created. Connecting again..."),
+                ),
                 Err(e) => {
-                    estado::log(&nome, format!("Não foi possível criar o adaptador: {e}"));
-                    crate::error_box_async(format!(
+                    estado::log(
+                        &nome,
+                        trf!("Não foi possível criar o adaptador: {e}", "Could not create the adapter: {e}"),
+                    );
+                    crate::error_box_async(trf!(
                         "{nome}: não há adaptador de rede livre para mais uma conexão \
-                         simultânea, e não foi possível criar outro.\n\n{e}"
+                         simultânea, e não foi possível criar outro.\n\n{e}",
+                        "{nome}: there is no free network adapter for another \
+                         simultaneous connection, and another one could not be created.\n\n{e}"
                     ));
                     break;
                 }
@@ -273,6 +318,31 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
     Controller { stop, finished }
 }
 
+/// Descobre pelas rotas do Windows se a VPN recem-conectada manda toda a
+/// internet por ela, e guarda na conta (mostrado no cartao e usado no aviso
+/// de conflito entre duas VPNs de tunel completo).
+fn registrar_tipo_de_tunel(conta: &Conta, nome: &str, ip_local: Option<&str>) {
+    let Some(completo) = ip_local.and_then(crate::rotas::tunel_completo) else {
+        return;
+    };
+    if crate::motor::get().registrar_tunel(&conta.id, completo) {
+        estado::log(
+            nome,
+            if completo {
+                tr!(
+                    "Esta VPN leva toda a internet (túnel completo).",
+                    "This VPN carries all internet traffic (full tunnel)."
+                )
+            } else {
+                tr!(
+                    "Esta VPN leva só a rede dela (túnel dividido).",
+                    "This VPN carries only its own network (split tunnel)."
+                )
+            },
+        );
+    }
+}
+
 /// Executa uma tentativa de conexao. Devolve Some(hwid) quando o OpenVPN
 /// encerrou por falta de adaptador de rede livre (vale tentar de novo).
 fn run(conta: &Conta, nome: &str, openvpn: &Path, stop: &AtomicBool) -> Option<&'static str> {
@@ -283,7 +353,10 @@ fn run(conta: &Conta, nome: &str, openvpn: &Path, stop: &AtomicBool) -> Option<&
     let cfg_dir = config.parent().map(PathBuf::from).unwrap_or_default();
     let log_file = log_path(&conta.id);
     let _ = std::fs::create_dir_all(log_file.parent().unwrap_or(Path::new(".")));
-    estado::log(nome, format!("Iniciando o OpenVPN ({})", conta.arquivo()));
+    estado::log(
+        nome,
+        trf!("Iniciando o OpenVPN ({})", "Starting OpenVPN ({})", conta.arquivo()),
+    );
 
     let mut child = match Command::new(openvpn)
         .args(["--config"])
@@ -307,8 +380,14 @@ fn run(conta: &Conta, nome: &str, openvpn: &Path, stop: &AtomicBool) -> Option<&
     {
         Ok(c) => c,
         Err(e) => {
-            estado::log(nome, format!("Não consegui iniciar o OpenVPN: {e}"));
-            crate::error_box_async(format!("{nome}: não consegui iniciar o OpenVPN.\n\n{e}"));
+            estado::log(
+                nome,
+                trf!("Não consegui iniciar o OpenVPN: {e}", "Could not start OpenVPN: {e}"),
+            );
+            crate::error_box_async(trf!(
+                "{nome}: não consegui iniciar o OpenVPN.\n\n{e}",
+                "{nome}: could not start OpenVPN.\n\n{e}"
+            ));
             return None;
         }
     };
@@ -330,7 +409,7 @@ fn run(conta: &Conta, nome: &str, openvpn: &Path, stop: &AtomicBool) -> Option<&
         if stop.load(Ordering::SeqCst) {
             pedido_de_parada = true;
             estado::definir(&conta.id, Situacao::Desconectando, None);
-            estado::log(nome, "Desconectando...");
+            estado::log(nome, tr!("Desconectando...", "Disconnecting..."));
             let mut sent = false;
             if let Some(s) = stream.as_mut() {
                 sent = s.write_all(b"signal SIGTERM\r\n").is_ok();
@@ -403,7 +482,7 @@ fn run(conta: &Conta, nome: &str, openvpn: &Path, stop: &AtomicBool) -> Option<&
                 let Some(senha) = conta.compor_senha(token.as_deref()) else {
                     continue;
                 };
-                estado::log(nome, "Enviando usuário e senha...");
+                estado::log(nome, tr!("Enviando usuário e senha...", "Sending username and password..."));
                 if let Some(s) = stream.as_mut() {
                     let msg = format!(
                         "username \"Auth\" \"{}\"\r\npassword \"Auth\" \"{}\"\r\n",
@@ -415,13 +494,24 @@ fn run(conta: &Conta, nome: &str, openvpn: &Path, stop: &AtomicBool) -> Option<&
             } else if line.starts_with(">PASSWORD:Verification Failed") {
                 auth_failures += 1;
                 force_next_window = true;
-                estado::log(nome, format!("Autenticação recusada ({auth_failures}x)."));
+                estado::log(
+                    nome,
+                    trf!(
+                        "Autenticação recusada ({auth_failures}x).",
+                        "Authentication rejected ({auth_failures}x)."
+                    ),
+                );
                 // senha fixa errada nao melhora tentando de novo
                 let limite = if conta.autenticacao.usa_token() { MAX_AUTH_FAILURES } else { 1 };
                 if auth_failures >= limite {
-                    crate::error_box_async(format!(
-                        "{nome}: autenticação recusada.\nConfira o usuário e a {} da conta.",
-                        if conta.autenticacao.usa_token() { "seed" } else { "senha" }
+                    let segredo = if conta.autenticacao.usa_token() {
+                        "seed"
+                    } else {
+                        tr!("senha", "password")
+                    };
+                    crate::error_box_async(trf!(
+                        "{nome}: autenticação recusada.\nConfira o usuário e a {segredo} da conta.",
+                        "{nome}: authentication rejected.\nCheck the account's username and {segredo}."
                     ));
                     stop.store(true, Ordering::SeqCst);
                 }
@@ -436,11 +526,12 @@ fn run(conta: &Conta, nome: &str, openvpn: &Path, stop: &AtomicBool) -> Option<&
                 let situacao = estado::situacao_do_openvpn(&state);
                 if situacao == Situacao::Conectado {
                     auth_failures = 0;
+                    registrar_tipo_de_tunel(conta, nome, ip.as_deref());
                 } else {
                     last_count = None;
                 }
                 estado::definir(&conta.id, situacao, ip);
-                estado::log(nome, format!("Estado: {state}"));
+                estado::log(nome, trf!("Estado: {state}", "State: {state}"));
             } else if line.starts_with(">INFO:")
                 || line.starts_with("ERROR:")
                 || line.starts_with(">FATAL:")
@@ -453,8 +544,9 @@ fn run(conta: &Conta, nome: &str, openvpn: &Path, stop: &AtomicBool) -> Option<&
     let code = wait_child(&mut child, 20);
     estado::log(
         nome,
-        format!(
+        trf!(
             "OpenVPN encerrou (código {}).",
+            "OpenVPN exited (code {}).",
             code.map(|c| c.to_string()).unwrap_or_else(|| "?".into())
         ),
     );

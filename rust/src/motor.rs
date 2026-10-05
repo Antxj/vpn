@@ -24,14 +24,21 @@ pub enum ErroConexao {
 impl ErroConexao {
     pub fn mensagem(&self) -> String {
         match self {
-            ErroConexao::SemAdministrador => "O aplicativo não está sendo executado como \
-                administrador, e o OpenVPN precisa disso para criar a conexão de rede.\n\n\
-                Feche e abra de novo aceitando o pedido de permissão do Windows."
-                .into(),
-            ErroConexao::OpenVpnAusente => {
-                "O OpenVPN Community não está instalado neste computador.".into()
-            }
-            ErroConexao::ContaInexistente => "Conta não encontrada.".into(),
+            ErroConexao::SemAdministrador => tr!(
+                "O aplicativo não está sendo executado como administrador, e o \
+                 OpenVPN precisa disso para criar a conexão de rede.\n\n\
+                 Feche e abra de novo aceitando o pedido de permissão do Windows.",
+                "The app is not running as administrator, and OpenVPN needs that \
+                 to create the network connection.\n\n\
+                 Close it and open it again, accepting the Windows permission prompt."
+            )
+            .into(),
+            ErroConexao::OpenVpnAusente => tr!(
+                "O OpenVPN Community não está instalado neste computador.",
+                "OpenVPN Community is not installed on this computer."
+            )
+            .into(),
+            ErroConexao::ContaInexistente => tr!("Conta não encontrada.", "Account not found.").into(),
             ErroConexao::Invalida(m) => m.clone(),
         }
     }
@@ -91,13 +98,47 @@ impl Motor {
     }
 
     /// Inclui ou atualiza uma conta (pelo id) e grava em disco.
-    pub fn salvar_conta(&self, conta: Conta) {
+    pub fn salvar_conta(&self, mut conta: Conta) {
         let mut s = self.settings.lock().unwrap();
         match s.contas.iter_mut().find(|c| c.id == conta.id) {
-            Some(existente) => *existente = conta,
+            Some(existente) => {
+                // outro .ovpn: o tipo de tunel observado nao vale mais
+                if existente.config != conta.config {
+                    conta.tunel_completo = None;
+                }
+                *existente = conta;
+            }
             None => s.contas.push(conta),
         }
         dpapi::save_settings(&s);
+    }
+
+    /// Guarda o tipo de tunel observado ao conectar (grava so se mudou).
+    pub fn registrar_tunel(&self, id: &str, completo: bool) -> bool {
+        let mut s = self.settings.lock().unwrap();
+        let Some(c) = s.contas.iter_mut().find(|c| c.id == id) else {
+            return false;
+        };
+        if c.tunel_completo == Some(completo) {
+            return false;
+        }
+        c.tunel_completo = Some(completo);
+        dpapi::save_settings(&s);
+        true
+    }
+
+    /// Idioma escolhido (None = automatico pelo Windows).
+    pub fn idioma(&self) -> Option<crate::i18n::Idioma> {
+        let s = self.settings.lock().unwrap();
+        s.idioma.as_deref().and_then(crate::i18n::Idioma::do_codigo)
+    }
+
+    pub fn salvar_idioma(&self, idioma: Option<crate::i18n::Idioma>) {
+        let mut s = self.settings.lock().unwrap();
+        s.idioma = idioma.map(|i| i.codigo().to_string());
+        dpapi::save_settings(&s);
+        drop(s);
+        crate::i18n::aplicar(idioma);
     }
 
     pub fn remover_conta(&self, id: &str) {
@@ -154,13 +195,13 @@ impl Motor {
         let Some(conta) = self.conta(id) else {
             return Vec::new();
         };
-        if !crate::contas::redireciona_tudo(Path::new(&conta.config)) {
+        if conta.tunel_completo() != Some(true) {
             return Vec::new();
         }
         self.contas()
             .into_iter()
             .filter(|c| c.id != id && self.ativa(&c.id))
-            .filter(|c| crate::contas::redireciona_tudo(Path::new(&c.config)))
+            .filter(|c| c.tunel_completo() == Some(true))
             .map(|c| c.nome_exibicao().to_string())
             .collect()
     }
@@ -184,13 +225,14 @@ impl Motor {
                 && Path::new(&c.config) == Path::new(&conta.config)
         });
         if let Some(outra) = mesma_config {
-            return Err(ErroConexao::Invalida(format!(
+            return Err(ErroConexao::Invalida(trf!(
                 "A conta \"{}\" já está conectada com o mesmo arquivo .ovpn.",
+                "The account \"{}\" is already connected with the same .ovpn file.",
                 outra.nome_exibicao()
             )));
         }
 
-        estado::log(conta.nome_exibicao(), "Conectando...");
+        estado::log(conta.nome_exibicao(), tr!("Conectando...", "Connecting..."));
         let ctrl = vpn::start(conta, openvpn);
         self.conexoes.lock().unwrap().insert(id.to_string(), ctrl);
         Ok(())

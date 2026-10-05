@@ -108,6 +108,9 @@ pub struct Settings {
     /// Procurar novas versoes automaticamente (ausente = sim).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub atualizacoes: Option<bool>,
+    /// Idioma da interface: "pt" ou "en" (ausente = o do Windows).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idioma: Option<String>,
 }
 
 fn appdata() -> PathBuf {

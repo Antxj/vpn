@@ -154,7 +154,10 @@ fn verificar(manual: bool) {
 fn consultar(url: &str, atual: &str) -> Result<Option<Versao>, String> {
     let corpo = http_get(url, LIMITE_JSON, &mut |_| {}).map_err(|e| match e {
         // repositorio privado/inexistente ou sem nenhuma release publicada
-        ErroHttp::Status(404) => "Nenhuma versão publicada foi encontrada.".to_string(),
+        ErroHttp::Status(404) => {
+            tr!("Nenhuma versão publicada foi encontrada.", "No published version was found.")
+                .to_string()
+        }
         outro => outro.mensagem(),
     })?;
     interpretar(&corpo, atual)
@@ -162,14 +165,12 @@ fn consultar(url: &str, atual: &str) -> Result<Option<Versao>, String> {
 
 /// Le a resposta de `releases/latest`; Some se for mais nova que `atual`.
 fn interpretar(corpo: &[u8], atual: &str) -> Result<Option<Versao>, String> {
-    let v: serde_json::Value = serde_json::from_slice(corpo)
-        .map_err(|_| "Resposta inesperada do GitHub.".to_string())?;
+    let inesperada = || tr!("Resposta inesperada do GitHub.", "Unexpected response from GitHub.").to_string();
+    let v: serde_json::Value = serde_json::from_slice(corpo).map_err(|_| inesperada())?;
     if v["draft"].as_bool() == Some(true) || v["prerelease"].as_bool() == Some(true) {
         return Ok(None);
     }
-    let tag = v["tag_name"]
-        .as_str()
-        .ok_or_else(|| "Resposta inesperada do GitHub.".to_string())?;
+    let tag = v["tag_name"].as_str().ok_or_else(inesperada)?;
     let numero = tag.trim_start_matches(['v', 'V']).to_string();
     if !versao_maior(&numero, atual) {
         return Ok(None);
@@ -239,7 +240,7 @@ pub fn instalar(v: Versao) {
             Err(e) => {
                 definir(Estado::FalhaInstalacao(
                     v,
-                    format!("Não encontrei o executável atual: {e}"),
+                    trf!("Não encontrei o executável atual: {e}", "Could not find the current executable: {e}"),
                 ));
                 return;
             }
@@ -259,9 +260,11 @@ pub fn instalar(v: Versao) {
                 if let Err(e) = reabrir(&alvo) {
                     definir(Estado::FalhaInstalacao(
                         v,
-                        format!(
+                        trf!(
                             "A versão nova foi instalada, mas não consegui reabrir o \
-                             aplicativo ({e}). Feche e abra de novo."
+                             aplicativo ({e}). Feche e abra de novo.",
+                            "The new version was installed, but the app could not be \
+                             reopened ({e}). Close it and open it again."
                         ),
                     ));
                 }
@@ -287,12 +290,20 @@ fn baixar_e_trocar(
     progresso: &mut dyn FnMut(f32),
 ) -> Result<(), String> {
     if v.download.is_empty() {
-        return Err(format!("A versão {} não tem o {ARQUIVO} anexado.", v.numero));
+        return Err(trf!(
+            "A versão {} não tem o {ARQUIVO} anexado.",
+            "Version {} does not have {ARQUIVO} attached.",
+            v.numero
+        ));
     }
     let esperado = v.sha256.as_deref().ok_or_else(|| {
-        "O GitHub não informou o SHA-256 deste arquivo, então ele não pode ser \
-         conferido. Baixe pela página da versão."
-            .to_string()
+        tr!(
+            "O GitHub não informou o SHA-256 deste arquivo, então ele não pode ser \
+             conferido. Baixe pela página da versão.",
+            "GitHub did not provide the SHA-256 of this file, so it cannot be \
+             verified. Download it from the release page."
+        )
+        .to_string()
     })?;
     let total = v.tamanho;
     let dados = http_get(&v.download, LIMITE_EXE, &mut |lidos| {
@@ -300,34 +311,51 @@ fn baixar_e_trocar(
             progresso((lidos as f32 / total as f32).min(1.0));
         }
     })
-    .map_err(|e| format!("Falha no download: {}", e.mensagem()))?;
+    .map_err(|e| trf!("Falha no download: {}", "Download failed: {}", e.mensagem()))?;
 
     if total > 0 && dados.len() as u64 != total {
-        return Err("O download veio incompleto. Nada foi alterado.".into());
+        return Err(tr!(
+            "O download veio incompleto. Nada foi alterado.",
+            "The download is incomplete. Nothing was changed."
+        )
+        .into());
     }
     if sha256_hex(&dados).as_deref() != Some(esperado) {
-        return Err(
+        return Err(tr!(
             "O arquivo baixado não confere com o publicado (SHA-256 diferente). \
-             Nada foi alterado."
-                .into(),
-        );
+             Nada foi alterado.",
+            "The downloaded file does not match the published one (different \
+             SHA-256). Nothing was changed."
+        )
+        .into());
     }
     if !dados.starts_with(b"MZ") {
-        return Err("O arquivo baixado não é um executável. Nada foi alterado.".into());
+        return Err(tr!(
+            "O arquivo baixado não é um executável. Nada foi alterado.",
+            "The downloaded file is not an executable. Nothing was changed."
+        )
+        .into());
     }
 
     let novo = vizinho(alvo, "novo");
     let antigo = vizinho(alvo, "antigo");
     std::fs::write(&novo, &dados)
-        .map_err(|e| format!("Não consegui gravar a versão nova na pasta do aplicativo: {e}"))?;
+        .map_err(|e| {
+            trf!(
+                "Não consegui gravar a versão nova na pasta do aplicativo: {e}",
+                "Could not write the new version to the app folder: {e}"
+            )
+        })?;
 
     // a partir da primeira versao assinada, so aceita o mesmo editor
     if let Some(editor) = assinante(alvo) {
         if assinante(&novo).as_deref() != Some(editor.as_str()) {
             let _ = std::fs::remove_file(&novo);
-            return Err(format!(
+            return Err(trf!(
                 "O arquivo baixado não tem a assinatura digital de \"{editor}\". \
-                 Nada foi alterado."
+                 Nada foi alterado.",
+                "The downloaded file is not digitally signed by \"{editor}\". \
+                 Nothing was changed."
             ));
         }
     }
@@ -335,14 +363,17 @@ fn baixar_e_trocar(
     // o Windows deixa renomear o executavel em uso (nao apagar): o atual vira
     // .antigo, apagado na proxima abertura
     let _ = std::fs::remove_file(&antigo);
+    let falha = |e: std::io::Error| {
+        trf!("Não consegui substituir o aplicativo: {e}", "Could not replace the app: {e}")
+    };
     if let Err(e) = std::fs::rename(alvo, &antigo) {
         let _ = std::fs::remove_file(&novo);
-        return Err(format!("Não consegui substituir o aplicativo: {e}"));
+        return Err(falha(e));
     }
     if let Err(e) = std::fs::rename(&novo, alvo) {
         let _ = std::fs::rename(&antigo, alvo);
         let _ = std::fs::remove_file(&novo);
-        return Err(format!("Não consegui substituir o aplicativo: {e}"));
+        return Err(falha(e));
     }
     Ok(())
 }
@@ -497,10 +528,16 @@ enum ErroHttp {
 impl ErroHttp {
     fn mensagem(&self) -> String {
         match self {
-            ErroHttp::Rede(_) => "Sem conexão com o GitHub. Verifique a internet.".into(),
-            ErroHttp::Status(s) => format!("O GitHub respondeu com erro (HTTP {s})."),
-            ErroHttp::Grande => "Resposta grande demais.".into(),
-            ErroHttp::Url => "Endereço inválido.".into(),
+            ErroHttp::Rede(_) => tr!(
+                "Sem conexão com o GitHub. Verifique a internet.",
+                "Could not reach GitHub. Check the internet connection."
+            )
+            .into(),
+            ErroHttp::Status(s) => {
+                trf!("O GitHub respondeu com erro (HTTP {s}).", "GitHub returned an error (HTTP {s}).")
+            }
+            ErroHttp::Grande => tr!("Resposta grande demais.", "Response too large.").into(),
+            ErroHttp::Url => tr!("Endereço inválido.", "Invalid address.").into(),
         }
     }
 }

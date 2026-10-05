@@ -56,6 +56,20 @@ COMO USAR
 7. Abrir o VPN.exe de novo com o programa já rodando apenas restaura a
    janela (não abre duplicado).
 
+TÚNEL COMPLETO E TÚNEL DIVIDIDO
+-------------------------------
+Cada cartão mostra o tipo da VPN, descoberto na primeira conexão:
+"toda a internet" (túnel completo: tudo sai pela VPN) ou "só a rede da
+VPN" (túnel dividido: só a rede da empresa vai pela VPN). Uma de cada
+pode ficar ligada ao mesmo tempo, em qualquer ordem - o programa cuida
+das rotas para uma não derrubar a outra. Duas de túnel completo ao
+mesmo tempo não funcionam direito, e o programa avisa antes.
+
+IDIOMA
+------
+O programa segue o idioma do Windows (português ou inglês). Para fixar
+um dos dois: "Contas" > "Idioma".
+
 ATUALIZAÇÕES
 ------------
 Uma vez por dia o programa consulta, no GitHub, se há versão nova (sem

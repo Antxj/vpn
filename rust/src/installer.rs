@@ -46,12 +46,16 @@ pub fn install_in_background(tx: Sender<Event>, ctx: eframe::egui::Context) {
 
 fn install() -> Result<bool, String> {
     if !is_available() {
-        return Err("Esta compilação não tem o instalador embutido.".into());
+        return Err(tr!(
+            "Esta compilação não tem o instalador embutido.",
+            "This build does not include the embedded installer."
+        )
+        .into());
     }
 
     let msi_path = std::env::temp_dir().join(format!("vpn-openvpn-{MSI_VERSION}.msi"));
     std::fs::write(&msi_path, MSI)
-        .map_err(|e| format!("Não consegui gravar o instalador em disco: {e}"))?;
+        .map_err(|e| trf!("Não consegui gravar o instalador em disco: {e}", "Could not write the installer to disk: {e}"))?;
 
     let log = log_path();
     let _ = std::fs::create_dir_all(crate::dpapi::app_dir());
@@ -66,16 +70,17 @@ fn install() -> Result<bool, String> {
 
     let _ = std::fs::remove_file(&msi_path);
 
-    let status = status.map_err(|e| format!("Não consegui executar o msiexec: {e}"))?;
+    let status = status.map_err(|e| trf!("Não consegui executar o msiexec: {e}", "Could not run msiexec: {e}"))?;
     match status.code() {
         Some(0) => Ok(false),
         Some(ERROR_SUCCESS_REBOOT_REQUIRED) => Ok(true),
-        Some(1602) => Err("A instalação foi cancelada.".into()),
-        Some(code) => Err(format!(
+        Some(1602) => Err(tr!("A instalação foi cancelada.", "The installation was cancelled.").into()),
+        Some(code) => Err(trf!(
             "A instalação falhou (código {code}).\nDetalhes em:\n{}",
+            "The installation failed (code {code}).\nDetails in:\n{}",
             log.display()
         )),
-        None => Err("A instalação foi interrompida.".into()),
+        None => Err(tr!("A instalação foi interrompida.", "The installation was interrupted.").into()),
     }
 }
 

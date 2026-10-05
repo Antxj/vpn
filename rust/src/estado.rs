@@ -58,13 +58,13 @@ impl Default for EstadoConta {
 impl EstadoConta {
     pub fn texto(&self) -> String {
         match self.situacao {
-            Situacao::Desconectado => "Desconectado".into(),
-            Situacao::Conectando => "Conectando...".into(),
-            Situacao::Reconectando => "Reconectando...".into(),
-            Situacao::Desconectando => "Desconectando...".into(),
+            Situacao::Desconectado => tr!("Desconectado", "Disconnected").into(),
+            Situacao::Conectando => tr!("Conectando...", "Connecting...").into(),
+            Situacao::Reconectando => tr!("Reconectando...", "Reconnecting...").into(),
+            Situacao::Desconectando => tr!("Desconectando...", "Disconnecting...").into(),
             Situacao::Conectado => match &self.ip {
-                Some(ip) => format!("Conectado  -  IP {ip}"),
-                None => "Conectado".into(),
+                Some(ip) => trf!("Conectado  -  IP {ip}", "Connected  -  IP {ip}"),
+                None => tr!("Conectado", "Connected").into(),
             },
         }
     }
@@ -205,10 +205,10 @@ pub fn resumo(contas: &[(String, String)]) -> (Agregado, Vec<String>) {
         .filter(|(_, e)| e.situacao == Situacao::Conectado)
         .count();
     let mut linhas = vec![match (estados.len(), conectadas) {
-        (0, _) => "Nenhuma conta configurada".to_string(),
-        (_, 0) => "Desconectado".to_string(),
-        (1, 1) => "Conectado".to_string(),
-        (total, n) => format!("{n} de {total} conectadas"),
+        (0, _) => tr!("Nenhuma conta configurada", "No accounts configured").to_string(),
+        (_, 0) => tr!("Desconectado", "Disconnected").to_string(),
+        (1, 1) => tr!("Conectado", "Connected").to_string(),
+        (total, n) => trf!("{n} de {total} conectadas", "{n} of {total} connected"),
     }];
     for (nome, e) in &estados {
         if e.situacao == Situacao::Desconectado {

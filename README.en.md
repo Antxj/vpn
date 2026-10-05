@@ -10,22 +10,22 @@ reconnects by itself with a fresh token.
 Written in **Rust**: a single ~12 MB native executable that already ships the
 official OpenVPN installer — nothing needs to be installed beforehand.
 
-The user interface is in Brazilian Portuguese; the labels mentioned below are
-followed by their English meaning.
+The interface is available in English and Brazilian Portuguese, following
+the Windows language (it can be set under **Accounts** › Language).
 
 | Dark theme | Light theme |
 |---|---|
-| ![Dark theme](docs/inicio_escuro.png) | ![Light theme](docs/inicio_claro.png) |
+| ![Dark theme](docs/en/inicio_escuro.png) | ![Light theme](docs/en/inicio_claro.png) |
 
 | Accounts | Edit account |
 |---|---|
-| ![Account list](docs/contas.png) | ![Account editor](docs/editor.png) |
+| ![Account list](docs/en/contas.png) | ![Account editor](docs/en/editor.png) |
 
 If OpenVPN Community is not installed, the app shows a notice and installs it
 silently from the embedded official installer (the check runs every 5
 seconds — as soon as OpenVPN is found, the notice goes away):
 
-![OpenVPN missing notice](docs/aviso_openvpn.png)
+![OpenVPN missing notice](docs/en/aviso_openvpn.png)
 
 ## How it works
 
@@ -43,19 +43,28 @@ without user intervention.
 - **Three authentication methods** per account: token (Google
   Authenticator), fixed password, or password + token (the password followed
   by the 6-digit code)
-- **Accounts screen** ("Contas"): add, edit and remove; the editor shows the
+- **Accounts screen**: add, edit and remove; the editor shows the
   current token so it can be compared with the phone before saving
 - **System tray**: closing or minimizing does not disconnect. The icon
   summarizes all accounts (green: connected and none in transition; amber:
   some connecting or reconnecting; gray: none connected), the tooltip lists
   each connection, and the right-click menu toggles each account, plus
-  "Desconectar todas" (disconnect all) and "Sair" (exit)
+  "Disconnect all" and "Exit"
 - **Simultaneous connections**: each one needs its own virtual network
   adapter; if all are in use, the app creates another one (with OpenVPN's own
   `tapctl.exe`) and retries
+- **Full tunnel and split tunnel together**: each card shows whether the VPN
+  carries **all traffic** (full tunnel) or **only the VPN's network** (split
+  tunnel) — the app learns this on the first connection, from the routes the
+  server created. One of each can be on at the same time, in any order: before
+  starting a split-tunnel VPN, the app pins a direct route (through the local
+  network) to its server, so it does not drop when the full-tunnel one
+  connects (details in [Routes](#routes))
 - **Conflicting routes warning**: if two accounts send all traffic through
-  the VPN (`redirect-gateway`), the app warns before connecting the second
-  one — only the last one would work as the default route
+  the VPN, the app warns before connecting the second one — only the last one
+  would work as the default route
+- **English or Portuguese**: follows the Windows language; either one can be
+  set under **Accounts** › Language
 - **QR code import**: the same QR code used to enroll Google Authenticator
   fills in the username and seed (image file or pasted screenshot)
 - **Single instance**: opening the exe again just restores the existing
@@ -71,8 +80,8 @@ without user intervention.
 - The original `.ovpn` files are used without any modification
 - **Unobtrusive updates**: once a day the app checks this repository's
   [Releases](../../releases); when there is a new version, a link appears at
-  the top of the window and an item in the tray menu. "Atualizar agora"
-  (update now) downloads, verifies and replaces the executable, reopens the
+  the top of the window and an item in the tray menu. "Update now"
+  downloads, verifies and replaces the executable, reopens the
   app and reconnects the VPNs that were on (details in [Updates](#updates))
 
 ## Requirements
@@ -94,11 +103,9 @@ the window.
 
 1. Download `VPN.exe` from the [Releases](../../releases) page
 2. Open it and accept the administrator prompt
-3. If the yellow notice appears, click **Instalar agora** (install now) and
-   wait ~1 minute
-4. Under **Contas** › **Nova conta** (accounts › new account), pick the
-   `.ovpn` file, enter the username and authentication (or use **Importar QR
-   Code…**) and save
+3. If the yellow notice appears, click **Install now** and wait ~1 minute
+4. Under **Accounts** › **New account**, pick the `.ovpn` file, enter the
+   username and authentication (or use **Import QR code…**) and save
 5. On the home screen, switch the account's toggle on
 
 On the first run, Windows SmartScreen may warn about an "unrecognized app":
@@ -114,7 +121,8 @@ on the PATH — or the MSVC toolchain with Visual Studio Build Tools.
 
 ```powershell
 cd rust
-cargo test               # TOTP, accounts, state, adapters, QR, MSI, updates
+cargo test               # TOTP, accounts, state, adapters, QR, MSI, updates, routes, language
+cargo test -- --ignored rota_direta   # creates and removes a real route (needs admin)
 .\build-release.ps1      # downloads and verifies the MSI, tests and builds the release (~12 MB)
 ```
 
@@ -138,6 +146,10 @@ Structure:
 - [`contas.rs`](rust/src/contas.rs) — account model, authentication and
   validation
 - [`dpapi.rs`](rust/src/dpapi.rs) — encryption and persistence
+- [`rotas.rs`](rust/src/rotas.rs) — direct route to the server and tunnel
+  type detection (Windows IP Helper)
+- [`i18n.rs`](rust/src/i18n.rs) — language (Portuguese/English) and the
+  `tr!`/`trf!` text macros
 - [`atualizacao.rs`](rust/src/atualizacao.rs) — checking for and installing
   new versions (WinHTTP, SHA-256 via BCrypt and signature via WinVerifyTrust)
 - [`totp.rs`](rust/src/totp.rs) (RFC 6238), [`qr.rs`](rust/src/qr.rs),
@@ -152,6 +164,7 @@ Useful variables for development and testing:
 | `VPN_INSTANCIA` | separates a test instance from the everyday app |
 | `VPN_SKIP_HINT` | does not show the first-time tray notification |
 | `VPN_CAPTURA` | documentation screenshots: hides the administrator notice; with `contas`, `editar`, `nova` or `atualizacao`, opens directly on that screen |
+| `VPN_IDIOMA` | forces `pt` or `en` (screenshots) |
 | `VPN_ATUALIZACAO_URL` | queries another address instead of the GitHub API (update tests) |
 | `APPDATA` | redirect to a test folder so the real accounts are not touched |
 
@@ -162,17 +175,15 @@ There is no dedicated server: the app queries
 then once a day. That endpoint ignores pre-releases, so a version only reaches
 users when it is published as final. The request sends no user data (GitHub
 only sees the IP address and the app version in the User-Agent) and can be
-turned off under **Contas** › "Procurar novas versões automaticamente"
-(check for new versions automatically).
+turned off under **Accounts** › "Check for new versions automatically".
 
 Nothing opens by itself: when there is a new version, only the blue
-"Versão X disponível" (version X available) link appears at the top of the
-window (plus an item in the tray menu). The window below only opens when the
-user clicks it:
+"Version X available" link appears at the top of the window (plus an item in
+the tray menu). The window below only opens when the user clicks it:
 
-![Update available](docs/atualizacao.png)
+![Update available](docs/en/atualizacao.png)
 
-When the user clicks **Atualizar agora** (update now):
+When the user clicks **Update now**:
 
 1. the release's `VPN.exe` is downloaded and only accepted if it has exactly
    the SHA-256 that GitHub publishes for the asset;
@@ -183,6 +194,35 @@ When the user clicks **Atualizar agora** (update now):
    next start) and the new one takes its place;
 4. the app disconnects the VPNs and closes; the new version opens by itself
    and reconnects the accounts that were connected.
+
+## Routes
+
+There are two kinds of VPN:
+
+- **full tunnel**: all internet traffic goes through the VPN — the server
+  sends `redirect-gateway` and OpenVPN creates the `0.0.0.0/1` and
+  `128.0.0.0/1` routes through the VPN;
+- **split tunnel**: only the company networks go through the VPN; everything
+  else uses the regular internet connection.
+
+One of each at the same time works, because Windows always uses the most
+specific route. The problem was a different one: when the full-tunnel VPN
+connected, the split-tunnel VPN's traffic **to its own server** started going
+through the other VPN, and it dropped. So, before starting a VPN that is not a
+full tunnel, the app creates a `/32` route to each server in the `.ovpn` file
+through the local network gateway (ignoring VPN adapters). The route is
+removed when the connection ends and never survives a Windows restart.
+
+Each VPN's type is learned when it connects: the app checks whether its
+adapter received the default route (or both halves `0.0.0.0/1` +
+`128.0.0.0/1`). This also covers the common case where `redirect-gateway`
+comes from the server rather than from the file. The result is saved in the
+account, shown on the card and used by the two-full-tunnels warning. Changing
+the account's `.ovpn` file clears the saved type.
+
+Known limitation: with both connected, internal names of the split-tunnel VPN
+(such as `intranet.company.local`) may stop resolving if the full-tunnel VPN
+takes over DNS. If that happens, please open an issue.
 
 ## Security
 
@@ -207,8 +247,8 @@ The app does not collect or send user data. Its only network connections are:
   `.ovpn` file);
 - the **check for new versions** on GitHub (described in
   [Updates](#updates)), which sends no user data — GitHub only sees the IP
-  address and the app version — and can be turned off under **Contas** ›
-  "Procurar novas versões automaticamente". The
+  address and the app version — and can be turned off under **Accounts** ›
+  "Check for new versions automatically". The
   [GitHub privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)
   applies.
 
@@ -217,7 +257,7 @@ Accounts, passwords and seeds stay on the computer only, encrypted (see
 
 ## Uninstalling
 
-The app has no installer: exit it (tray › **Sair**) and delete `VPN.exe`. To
+The app has no installer: exit it (tray › **Exit**) and delete `VPN.exe`. To
 also remove the saved accounts and logs, delete the `%APPDATA%\VPN` folder.
 If OpenVPN Community was installed by the app, it can be removed under
 **Windows Settings › Apps › Installed apps › OpenVPN**.

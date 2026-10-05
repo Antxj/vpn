@@ -2,6 +2,9 @@
 //! gerado automaticamente.
 #![windows_subsystem = "windows"]
 
+// primeiro: as macros tr!/trf! precisam estar definidas antes dos modulos
+#[macro_use]
+mod i18n;
 mod atualizacao;
 mod contas;
 mod dpapi;
@@ -9,6 +12,7 @@ mod estado;
 mod installer;
 mod motor;
 mod qr;
+mod rotas;
 mod single;
 mod totp;
 mod vpn;
@@ -254,7 +258,10 @@ unsafe fn show_tray_notification() -> bool {
         copy_notification_text(&mut notification.szInfoTitle, APP_TITLE);
         copy_notification_text(
             &mut notification.szInfo,
-            "O aplicativo VPN continua ativo na bandeja. Clique no ícone para reabrir.",
+            tr!(
+                "O aplicativo VPN continua ativo na bandeja. Clique no ícone para reabrir.",
+                "VPN is still running in the system tray. Click the icon to reopen it."
+            ),
         );
         return Shell_NotifyIconW(NIM_MODIFY, &notification) != 0;
     }
@@ -479,11 +486,15 @@ fn report_startup_error(error: &eframe::Error) {
     });
 
     let log_info = match log_result {
-        Ok(()) => format!("Detalhes registrados em:\n{}", log_path.display()),
-        Err(log_error) => format!("Nao foi possivel gravar o log: {log_error}"),
+        Ok(()) => trf!("Detalhes registrados em:\n{}", "Details logged in:\n{}", log_path.display()),
+        Err(log_error) => trf!(
+            "Não foi possível gravar o log: {log_error}",
+            "Could not write the log: {log_error}"
+        ),
     };
-    error_box(&format!(
-        "Nao foi possivel iniciar a interface grafica.\n\nErro: {error}\n\n{log_info}"
+    error_box(&trf!(
+        "Não foi possível iniciar a interface gráfica.\n\nErro: {error}\n\n{log_info}",
+        "Could not start the user interface.\n\nError: {error}\n\n{log_info}"
     ));
 }
 
@@ -499,7 +510,13 @@ fn fmt_bytes(bytes: f64) -> String {
     if unit == 0 {
         format!("{} {}", v as u64, UNITS[unit])
     } else {
-        format!("{v:.1} {}", UNITS[unit]).replace('.', ",")
+        let texto = format!("{v:.1} {}", UNITS[unit]);
+        // virgula decimal so em portugues
+        if i18n::pt() {
+            texto.replace('.', ",")
+        } else {
+            texto
+        }
     }
 }
 
@@ -558,9 +575,9 @@ struct TrayUi {
     icons: [tray_icon::Icon; 3], // cinza, ambar, verde
     /// Item marcavel de cada conta, para refletir conectada/desconectada.
     itens: Vec<(String, CheckMenuItem)>,
-    /// (id, nome) das contas e versao nova oferecida no menu atual;
+    /// (id, nome) das contas, versao nova oferecida e idioma do menu atual;
     /// None = menu ainda nao montado.
-    assinatura: Option<(Vec<(String, String)>, Option<String>)>,
+    assinatura: Option<(Vec<(String, String)>, Option<String>, bool)>,
     last_icon: usize,
     last_tip: String,
 }
@@ -577,18 +594,20 @@ fn montar_menu(
     let mut acoes = Vec::new();
     let mut itens = Vec::new();
 
-    let abrir = MenuItem::new("Abrir", true, None);
+    let abrir = MenuItem::new(tr!("Abrir", "Open"), true, None);
     acoes.push((abrir.id().clone(), AcaoMenu::Abrir));
     let _ = menu.append(&abrir);
     if let Some(v) = versao_nova {
-        let item = MenuItem::new(format!("Atualizar para a versão {v}..."), true, None);
+        let texto = trf!("Atualizar para a versão {v}...", "Update to version {v}...");
+        let item = MenuItem::new(texto, true, None);
         acoes.push((item.id().clone(), AcaoMenu::Atualizar));
         let _ = menu.append(&item);
     }
     let _ = menu.append(&PredefinedMenuItem::separator());
 
     if contas.is_empty() {
-        let _ = menu.append(&MenuItem::new("Nenhuma conta cadastrada", false, None));
+        let vazio = tr!("Nenhuma conta cadastrada", "No accounts yet");
+        let _ = menu.append(&MenuItem::new(vazio, false, None));
     }
     for (id, nome) in contas {
         let item = CheckMenuItem::new(nome, true, false, None);
@@ -597,14 +616,14 @@ fn montar_menu(
         itens.push((id.clone(), item));
     }
     if contas.len() > 1 {
-        let todas = MenuItem::new("Desconectar todas", true, None);
+        let todas = MenuItem::new(tr!("Desconectar todas", "Disconnect all"), true, None);
         acoes.push((todas.id().clone(), AcaoMenu::DesconectarTodas));
         let _ = menu.append(&PredefinedMenuItem::separator());
         let _ = menu.append(&todas);
     }
 
     let _ = menu.append(&PredefinedMenuItem::separator());
-    let sair = MenuItem::new("Sair", true, None);
+    let sair = MenuItem::new(tr!("Sair", "Exit"), true, None);
     acoes.push((sair.id().clone(), AcaoMenu::Sair));
     let _ = menu.append(&sair);
     (menu, itens, acoes)
@@ -626,7 +645,7 @@ fn apply_tray_state() {
         let mut borrow = cell.borrow_mut();
         let Some(ui) = borrow.as_mut() else { return };
 
-        let assinatura = (nomes.clone(), versao_nova.clone());
+        let assinatura = (nomes.clone(), versao_nova.clone(), i18n::pt());
         if ui.assinatura.as_ref() != Some(&assinatura) {
             let (menu, itens, acoes) = montar_menu(&nomes, versao_nova.as_deref());
             ui.tray.set_menu(Some(Box::new(menu)));
@@ -730,10 +749,13 @@ fn alternar_conta(id: &str) -> Result<(), ErroConexao> {
         let nome = m.conta(id).map(|c| c.nome_exibicao().to_string()).unwrap_or_default();
         let resposta = rfd::MessageDialog::new()
             .set_title(APP_TITLE)
-            .set_description(format!(
+            .set_description(trf!(
                 "\"{nome}\" e \"{}\" mandam todo o tráfego da internet pela VPN.\n\n\
                  Com as duas conectadas, só a última funciona como rota padrão \
                  (a outra continua acessando apenas a própria rede). Conectar mesmo assim?",
+                "\"{nome}\" and \"{}\" both send all internet traffic through the VPN.\n\n\
+                 With both connected, only the last one works as the default route \
+                 (the other one keeps reaching only its own network). Connect anyway?",
                 conflitos.join("\", \"")
             ))
             .set_level(rfd::MessageLevel::Warning)
@@ -829,6 +851,31 @@ fn toggle(ui: &mut egui::Ui, ligado: bool, habilitado: bool) -> egui::Response {
     }
 }
 
+/// Tipo de tunel da conta, para o cartao: (texto curto, explicacao).
+fn tipo_de_tunel(conta: &Conta) -> Option<(&'static str, &'static str)> {
+    conta.tunel_completo().map(|completo| {
+        if completo {
+            (
+                tr!("toda a internet", "all traffic"),
+                tr!(
+                    "Toda a internet passa por esta VPN (túnel completo).",
+                    "All internet traffic goes through this VPN (full tunnel)."
+                ),
+            )
+        } else {
+            (
+                tr!("só a rede da VPN", "VPN network only"),
+                tr!(
+                    "Só a rede da VPN passa por ela; o resto usa a sua internet \
+                     normal (túnel dividido).",
+                    "Only the VPN's network goes through it; everything else uses \
+                     your regular internet (split tunnel)."
+                ),
+            )
+        }
+    })
+}
+
 fn cor_situacao(s: Situacao, padrao: egui::Color32) -> egui::Color32 {
     match s {
         Situacao::Conectado => egui::Color32::from_rgb(0x2a, 0xa0, 0x2a),
@@ -896,7 +943,7 @@ impl App {
         let tray = TrayIconBuilder::new()
             .with_menu(Box::new(Menu::new()))
             .with_menu_on_left_click(false)
-            .with_tooltip(format!("{APP_TITLE} - Desconectado"))
+            .with_tooltip(format!("{APP_TITLE} - {}", tr!("Desconectado", "Disconnected")))
             .with_icon(icon_gray.clone())
             .build()
             .expect("falha ao criar o icone da bandeja");
@@ -909,7 +956,7 @@ impl App {
                 itens: Vec::new(),
                 assinatura: None,
                 last_icon: 0,
-                last_tip: format!("{APP_TITLE} - Desconectado"),
+                last_tip: String::new(),
             });
         });
         apply_tray_state();
@@ -920,19 +967,32 @@ impl App {
         // o build de desenvolvimento (que roda sem elevacao de proposito)
         let admin = motor::eh_administrador() || std::env::var_os("VPN_CAPTURA").is_some();
         if !admin {
-            estado::log("", "Atenção: o aplicativo não está como administrador.");
+            estado::log(
+                "",
+                tr!(
+                    "Atenção: o aplicativo não está como administrador.",
+                    "Warning: the app is not running as administrator."
+                ),
+            );
         }
         if APOS_ATUALIZAR.load(Ordering::SeqCst) {
             estado::log(
                 "",
-                format!("Aplicativo atualizado para a versão {}.", atualizacao::VERSAO_ATUAL),
+                trf!(
+                    "Aplicativo atualizado para a versão {}.",
+                    "App updated to version {}.",
+                    atualizacao::VERSAO_ATUAL
+                ),
             );
         }
         // religa as contas que estavam conectadas antes da atualizacao
         for id in RECONECTAR.get().into_iter().flatten() {
             if let Err(e) = m.conectar(id, find_openvpn()) {
                 let nome = m.conta(id).map(|c| c.nome_exibicao().to_string()).unwrap_or_default();
-                estado::log(&nome, format!("Não reconectou: {}", e.mensagem()));
+                estado::log(
+                    &nome,
+                    trf!("Não reconectou: {}", "Did not reconnect: {}", e.mensagem()),
+                );
             }
         }
         let ctx = cc.egui_ctx.clone();
@@ -977,8 +1037,9 @@ impl App {
         self.installing = true;
         estado::log(
             "",
-            format!(
+            trf!(
                 "Instalando o OpenVPN Community {}... (pode levar cerca de um minuto)",
+                "Installing OpenVPN Community {}... (this may take about a minute)",
                 installer::MSI_VERSION
             ),
         );
@@ -996,20 +1057,28 @@ impl App {
         }
         let (pergunta, instala) = if installer::is_available() {
             (
-                format!(
+                trf!(
                     "O OpenVPN Community não está instalado — ele é necessário \
                      para conectar à VPN.\n\nInstalar agora? O aplicativo já traz \
                      o instalador oficial (versão {}) e faz tudo sozinho, sem \
                      precisar baixar nada.",
+                    "OpenVPN Community is not installed — it is required to \
+                     connect to the VPN.\n\nInstall it now? The app already ships \
+                     the official installer (version {}) and does everything by \
+                     itself, with nothing to download.",
                     installer::MSI_VERSION
                 ),
                 true,
             )
         } else {
             (
-                "O OpenVPN Community não está instalado — ele é necessário \
-                 para conectar à VPN.\n\nAbrir a página de download agora?"
-                    .to_string(),
+                tr!(
+                    "O OpenVPN Community não está instalado — ele é necessário \
+                     para conectar à VPN.\n\nAbrir a página de download agora?",
+                    "OpenVPN Community is not installed — it is required to \
+                     connect to the VPN.\n\nOpen the download page now?"
+                )
+                .to_string(),
                 false,
             )
         };
@@ -1037,26 +1106,46 @@ impl App {
                     self.last_ovpn_check = Instant::now();
                     match result {
                         Ok(_) if self.openvpn_missing => {
-                            estado::log("", "Instalação concluída, mas o OpenVPN não foi encontrado.");
+                            estado::log(
+                                "",
+                                tr!(
+                                    "Instalação concluída, mas o OpenVPN não foi encontrado.",
+                                    "Installation finished, but OpenVPN was not found."
+                                ),
+                            );
                             show_main_window();
-                            error_box(
+                            error_box(tr!(
                                 "A instalação terminou, mas o OpenVPN não foi encontrado.\n\
                                  Reinicie o computador e abra o aplicativo de novo.",
-                            );
+                                "The installation finished, but OpenVPN was not found.\n\
+                                 Restart the computer and open the app again."
+                            ));
                         }
                         Ok(reiniciar) => {
-                            estado::log("", "OpenVPN Community instalado com sucesso.");
+                            estado::log(
+                                "",
+                                tr!(
+                                    "OpenVPN Community instalado com sucesso.",
+                                    "OpenVPN Community installed successfully."
+                                ),
+                            );
                             if reiniciar {
                                 estado::log(
                                     "",
-                                    "O Windows pediu reinicialização; se a conexão falhar, reinicie.",
+                                    tr!(
+                                        "O Windows pediu reinicialização; se a conexão falhar, reinicie.",
+                                        "Windows requested a restart; if the connection fails, restart."
+                                    ),
                                 );
                             }
                         }
                         Err(msg) => {
-                            estado::log("", format!("Falha na instalação: {msg}"));
+                            estado::log("", trf!("Falha na instalação: {msg}", "Installation failed: {msg}"));
                             show_main_window();
-                            error_box(&format!("Não foi possível instalar o OpenVPN.\n\n{msg}"));
+                            error_box(&trf!(
+                                "Não foi possível instalar o OpenVPN.\n\n{msg}",
+                                "Could not install OpenVPN.\n\n{msg}"
+                            ));
                         }
                     }
                 }
@@ -1073,17 +1162,20 @@ impl App {
 
     fn import_qr_image(&mut self, img: image::DynamicImage) {
         let Some(text) = qr::decode_qr(&img) else {
-            error_box(
+            error_box(tr!(
                 "Não encontrei um QR Code nessa imagem.\n\
                  Confira se ele aparece inteiro e nítido.",
-            );
+                "No QR code was found in this image.\n\
+                 Make sure it is complete and sharp."
+            ));
             return;
         };
         let data = qr::parse_payload(&text);
         let Some(seed) = data.seed else {
             let preview: String = text.chars().take(200).collect();
-            error_box(&format!(
-                "Li o QR Code, mas não identifiquei uma seed nele.\n\nConteúdo:\n{preview}"
+            error_box(&trf!(
+                "Li o QR Code, mas não identifiquei uma seed nele.\n\nConteúdo:\n{preview}",
+                "The QR code was read, but no seed was found in it.\n\nContent:\n{preview}"
             ));
             return;
         };
@@ -1099,15 +1191,15 @@ impl App {
 
     fn qr_from_file(&mut self) {
         let Some(path) = rfd::FileDialog::new()
-            .add_filter("Imagens", &["png", "jpg", "jpeg", "bmp", "gif", "webp"])
-            .set_title("Escolha a imagem do QR Code")
+            .add_filter(tr!("Imagens", "Images"), &["png", "jpg", "jpeg", "bmp", "gif", "webp"])
+            .set_title(tr!("Escolha a imagem do QR Code", "Choose the QR code image"))
             .pick_file()
         else {
             return;
         };
         match image::open(&path) {
             Ok(img) => self.import_qr_image(img),
-            Err(_) => error_box("Não consegui abrir essa imagem."),
+            Err(_) => error_box(tr!("Não consegui abrir essa imagem.", "Could not open this image.")),
         }
     }
 
@@ -1128,10 +1220,12 @@ impl App {
             None => {
                 rfd::MessageDialog::new()
                     .set_title(APP_TITLE)
-                    .set_description(
+                    .set_description(tr!(
                         "Não há imagem na área de transferência.\n\
                          Copie a imagem do QR Code e tente de novo.",
-                    )
+                        "There is no image on the clipboard.\n\
+                         Copy the QR code image and try again."
+                    ))
                     .set_level(rfd::MessageLevel::Info)
                     .show();
             }
@@ -1170,8 +1264,12 @@ impl App {
         if !self.admin {
             faixa(
                 ui,
-                "O aplicativo não está como administrador.\n\
-                 Feche e abra de novo aceitando a permissão do Windows.",
+                tr!(
+                    "O aplicativo não está como administrador.\n\
+                     Feche e abra de novo aceitando a permissão do Windows.",
+                    "The app is not running as administrator.\n\
+                     Close it and open it again, accepting the Windows prompt."
+                ),
                 &mut |_| {},
             );
         }
@@ -1179,9 +1277,15 @@ impl App {
         if self.openvpn_missing {
             let embutido = installer::is_available();
             let texto = if self.installing {
-                "Instalando o OpenVPN Community...\nIsso leva cerca de um minuto."
+                tr!(
+                    "Instalando o OpenVPN Community...\nIsso leva cerca de um minuto.",
+                    "Installing OpenVPN Community...\nThis takes about a minute."
+                )
             } else {
-                "OpenVPN Community não está instalado.\nEle é necessário para conectar à VPN."
+                tr!(
+                    "OpenVPN Community não está instalado.\nEle é necessário para conectar à VPN.",
+                    "OpenVPN Community is not installed.\nIt is required to connect to the VPN."
+                )
             };
             let mut instalar = false;
             let instalando = self.installing;
@@ -1189,7 +1293,11 @@ impl App {
                 if instalando {
                     ui.spinner();
                 } else {
-                    let rotulo = if embutido { "Instalar agora" } else { "Baixar" };
+                    let rotulo = if embutido {
+                        tr!("Instalar agora", "Install now")
+                    } else {
+                        tr!("Baixar", "Download")
+                    };
                     let btn = egui::Button::new(
                         egui::RichText::new(rotulo).color(egui::Color32::WHITE),
                     )
@@ -1216,15 +1324,22 @@ impl App {
         if contas.is_empty() {
             ui.add_space(40.0);
             ui.vertical_centered(|ui| {
-                ui.label(egui::RichText::new("Nenhuma conta cadastrada.").size(16.0));
+                ui.label(
+                    egui::RichText::new(tr!("Nenhuma conta cadastrada.", "No accounts yet."))
+                        .size(16.0),
+                );
                 ui.add_space(4.0);
                 ui.label(
-                    egui::RichText::new("Cadastre a primeira VPN para conectar.")
+                    egui::RichText::new(tr!(
+                        "Cadastre a primeira VPN para conectar.",
+                        "Add your first VPN to connect."
+                    ))
                         .color(label_color(self.dark)),
                 );
                 ui.add_space(12.0);
                 let btn = egui::Button::new(
-                    egui::RichText::new("Adicionar conta").color(egui::Color32::WHITE),
+                    egui::RichText::new(tr!("Adicionar conta", "Add account"))
+                        .color(egui::Color32::WHITE),
                 )
                 .fill(ACCENT);
                 if ui.add(btn).clicked() {
@@ -1275,13 +1390,21 @@ impl App {
                                         .truncate(),
                                     );
                                     let cor = cor_situacao(e.situacao, fraco);
-                                    ui.add(
-                                        egui::Label::new(
+                                    ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing.x = 6.0;
+                                        ui.label(
                                             egui::RichText::new(format!("\u{2022}  {}", e.texto()))
                                                 .color(cor),
-                                        )
-                                        .truncate(),
-                                    );
+                                        );
+                                        if let Some((tipo, dica)) = tipo_de_tunel(conta) {
+                                            ui.label(
+                                                egui::RichText::new(format!("·  {tipo}"))
+                                                    .small()
+                                                    .color(fraco),
+                                            )
+                                            .on_hover_text(dica);
+                                        }
+                                    });
                                     if let Some(t) = e.trafego {
                                         ui.add(
                                             egui::Label::new(
@@ -1297,8 +1420,9 @@ impl App {
                                         );
                                         ui.add(
                                             egui::Label::new(
-                                                egui::RichText::new(format!(
+                                                egui::RichText::new(trf!(
                                                     "recebido {}  ·  enviado {}",
+                                                    "received {}  ·  sent {}",
                                                     fmt_bytes(t.down_total as f64),
                                                     fmt_bytes(t.up_total as f64)
                                                 ))
@@ -1314,7 +1438,11 @@ impl App {
                                     |ui| {
                                         let ocupada = e.situacao == Situacao::Desconectando;
                                         let r = toggle(ui, ligada, !ocupada).on_hover_text(
-                                            if ligada { "Desconectar" } else { "Conectar" },
+                                            if ligada {
+                                                tr!("Desconectar", "Disconnect")
+                                            } else {
+                                                tr!("Conectar", "Connect")
+                                            },
                                         );
                                         if r.clicked() {
                                             if let Err(err) = alternar_conta(&conta.id) {
@@ -1335,7 +1463,7 @@ impl App {
 
         if varias_ativas {
             ui.vertical_centered(|ui| {
-                if ui.button("Desconectar todas").clicked() {
+                if ui.button(tr!("Desconectar todas", "Disconnect all")).clicked() {
                     m.desconectar_todas();
                 }
             });
@@ -1364,7 +1492,10 @@ impl App {
                         let linhas = estado::log_linhas();
                         if linhas.is_empty() {
                             ui.label(
-                                egui::RichText::new("As mensagens das conexões aparecem aqui.")
+                                egui::RichText::new(tr!(
+                                    "As mensagens das conexões aparecem aqui.",
+                                    "Connection messages appear here."
+                                ))
                                     .small()
                                     .color(label_color(self.dark)),
                             );
@@ -1400,18 +1531,21 @@ impl App {
             egui::Color32::from_rgb(0xff, 0xff, 0xff)
         };
 
-        ui.label(egui::RichText::new("Contas").size(18.0).strong());
+        ui.label(egui::RichText::new(tr!("Contas", "Accounts")).size(18.0).strong());
         ui.add_space(4.0);
         let mut editar: Option<Conta> = None;
         let mut remover: Option<Conta> = None;
 
         egui::ScrollArea::vertical()
-            .max_height((ui.available_height() - 120.0).max(120.0))
+            .max_height((ui.available_height() - 150.0).max(120.0))
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 if contas.is_empty() {
                     ui.label(
-                        egui::RichText::new("Nenhuma conta ainda. Adicione a primeira abaixo.")
+                        egui::RichText::new(tr!(
+                            "Nenhuma conta ainda. Adicione a primeira abaixo.",
+                            "No accounts yet. Add the first one below."
+                        ))
                             .color(label_color(self.dark)),
                     );
                 }
@@ -1438,15 +1572,24 @@ impl App {
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
-                                        let dica = "Desconecte a conta antes de alterá-la.";
-                                        let r = ui.add_enabled(!ativa, egui::Button::new("Remover"));
+                                        let dica = tr!(
+                                            "Desconecte a conta antes de alterá-la.",
+                                            "Disconnect the account before changing it."
+                                        );
+                                        let r = ui.add_enabled(
+                                            !ativa,
+                                            egui::Button::new(tr!("Remover", "Remove")),
+                                        );
                                         if r.clicked() {
                                             remover = Some(conta.clone());
                                         }
                                         if ativa {
                                             r.on_disabled_hover_text(dica);
                                         }
-                                        let r = ui.add_enabled(!ativa, egui::Button::new("Editar"));
+                                        let r = ui.add_enabled(
+                                            !ativa,
+                                            egui::Button::new(tr!("Editar", "Edit")),
+                                        );
                                         if r.clicked() {
                                             editar = Some(conta.clone());
                                         }
@@ -1458,13 +1601,22 @@ impl App {
                             });
                             // arquivo e autenticacao ganham a largura toda
                             let arquivo = conta.arquivo();
+                            let mut detalhes = format!(
+                                "{}  ·  {}",
+                                if arquivo.is_empty() {
+                                    tr!("sem arquivo .ovpn", "no .ovpn file")
+                                } else {
+                                    &arquivo
+                                },
+                                conta.autenticacao.rotulo()
+                            );
+                            if let Some((tipo, _)) = tipo_de_tunel(conta) {
+                                detalhes.push_str("  ·  ");
+                                detalhes.push_str(tipo);
+                            }
                             ui.add(
                                 egui::Label::new(
-                                    egui::RichText::new(format!(
-                                        "{}  ·  {}",
-                                        if arquivo.is_empty() { "sem arquivo .ovpn" } else { &arquivo },
-                                        conta.autenticacao.rotulo()
-                                    ))
+                                    egui::RichText::new(detalhes)
                                     .small()
                                     .color(label_color(self.dark)),
                                 )
@@ -1478,7 +1630,7 @@ impl App {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             let nova = egui::Button::new(
-                egui::RichText::new("Nova conta").color(egui::Color32::WHITE),
+                egui::RichText::new(tr!("Nova conta", "New account")).color(egui::Color32::WHITE),
             )
             .fill(ACCENT);
             if ui.add(nova).clicked() {
@@ -1488,7 +1640,7 @@ impl App {
                     .unwrap_or_default();
                 self.abrir_editor(c, true);
             }
-            if ui.button("Voltar").clicked() {
+            if ui.button(tr!("Voltar", "Back")).clicked() {
                 self.tela = Tela::Inicio;
                 atualizacao::limpar_resultado();
             }
@@ -1501,8 +1653,9 @@ impl App {
         if let Some(c) = remover {
             let sim = rfd::MessageDialog::new()
                 .set_title(APP_TITLE)
-                .set_description(format!(
+                .set_description(trf!(
                     "Remover a conta \"{}\"?\n\nUsuário, seed e senha salvos dela serão apagados.",
+                    "Remove the account \"{}\"?\n\nIts saved username, seed and password will be deleted.",
                     c.nome_exibicao()
                 ))
                 .set_level(rfd::MessageLevel::Warning)
@@ -1514,32 +1667,67 @@ impl App {
         }
     }
 
-    /// Versao e atualizacoes: discreto, no rodape da tela de contas.
+    /// Idioma, versao e atualizacoes: discreto, no rodape da tela de contas.
     fn rodape_atualizacao(&mut self, ui: &mut egui::Ui) {
         use atualizacao::Estado;
+        use i18n::Idioma;
         let m = motor::get();
         let fraco = label_color(self.dark);
         let pequeno = |t: &str| egui::RichText::new(t).small().color(fraco);
         ui.add_space(10.0);
         ui.separator();
+
+        let escolhido = m.idioma();
+        let automatico = trf!("Automático ({})", "Automatic ({})", i18n::do_windows().nome());
+        let mut novo = escolhido;
+        ui.horizontal(|ui| {
+            ui.label(pequeno(tr!("Idioma", "Language")));
+            egui::ComboBox::from_id_salt("idioma")
+                .selected_text(
+                    egui::RichText::new(escolhido.map(Idioma::nome).unwrap_or(&automatico)).small(),
+                )
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut novo, None, automatico.as_str());
+                    for i in [Idioma::Portugues, Idioma::Ingles] {
+                        ui.selectable_value(&mut novo, Some(i), i.nome());
+                    }
+                });
+        });
+        if novo != escolhido {
+            m.salvar_idioma(novo);
+            apply_tray_state();
+        }
+
         let mut auto = m.verifica_atualizacoes();
         if ui
-            .checkbox(&mut auto, pequeno("Procurar novas versões automaticamente"))
-            .on_hover_text("Uma vez por dia o aplicativo consulta o GitHub, sem enviar dados seus.")
+            .checkbox(
+                &mut auto,
+                pequeno(tr!(
+                    "Procurar novas versões automaticamente",
+                    "Check for new versions automatically"
+                )),
+            )
+            .on_hover_text(tr!(
+                "Uma vez por dia o aplicativo consulta o GitHub, sem enviar dados seus.",
+                "Once a day the app checks GitHub, without sending any of your data."
+            ))
             .changed()
         {
             m.salvar_verifica_atualizacoes(auto);
         }
         ui.horizontal(|ui| {
-            ui.label(pequeno(&format!("Versão {}", atualizacao::VERSAO_ATUAL)));
+            ui.label(pequeno(&trf!("Versão {}", "Version {}", atualizacao::VERSAO_ATUAL)));
             let estado = atualizacao::estado();
             match &estado {
                 Estado::Verificando => {
                     ui.spinner();
-                    ui.label(pequeno("procurando..."));
+                    ui.label(pequeno(tr!("procurando...", "checking...")));
                 }
                 Estado::EmDia => {
-                    ui.label(pequeno("·  você já tem a versão mais recente"));
+                    ui.label(pequeno(tr!(
+                        "·  você já tem a versão mais recente",
+                        "·  you have the latest version"
+                    )));
                 }
                 Estado::FalhaVerificacao(e) => {
                     ui.add(egui::Label::new(pequeno(&format!("·  {e}"))).truncate());
@@ -1547,7 +1735,10 @@ impl App {
                 Estado::Nada => {}
                 _ => {
                     if let Some(v) = atualizacao::disponivel() {
-                        let texto = egui::RichText::new(format!("·  versão {v} disponível"))
+                        let texto = egui::RichText::new(trf!(
+                            "·  versão {v} disponível",
+                            "·  version {v} available"
+                        ))
                             .small()
                             .color(ACCENT);
                         if ui.link(texto).clicked() {
@@ -1557,7 +1748,9 @@ impl App {
                 }
             }
             if matches!(estado, Estado::Nada | Estado::EmDia | Estado::FalhaVerificacao(_))
-                && ui.link(egui::RichText::new("Procurar agora").small()).clicked()
+                && ui
+                    .link(egui::RichText::new(tr!("Procurar agora", "Check now")).small())
+                    .clicked()
             {
                 atualizacao::verificar_agora();
             }
@@ -1581,7 +1774,8 @@ impl App {
         let mut fechar = false;
         let mut instalar = false;
 
-        let mut janela = egui::Window::new("Atualização")
+        let mut janela = egui::Window::new(tr!("Atualização", "Update"))
+            .id(egui::Id::new("janela_atualizacao"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]);
@@ -1593,52 +1787,66 @@ impl App {
             match &estado {
                 Estado::Disponivel(v) => {
                     ui.label(
-                        egui::RichText::new(format!("A versão {} está disponível.", v.numero))
+                        egui::RichText::new(trf!(
+                            "A versão {} está disponível.",
+                            "Version {} is available.",
+                            v.numero
+                        ))
                             .strong(),
                     );
                     ui.label(
-                        egui::RichText::new(format!(
+                        egui::RichText::new(trf!(
                             "Você usa a versão {}.",
+                            "You are using version {}.",
                             atualizacao::VERSAO_ATUAL
                         ))
                         .color(label_color(dark)),
                     );
                     ui.add_space(6.0);
                     ui.label(if v.instalavel() {
-                        "O aplicativo baixa a versão nova, confere a integridade e reabre \
-                         sozinho. As VPNs conectadas caem por alguns segundos e voltam em \
-                         seguida."
+                        tr!(
+                            "O aplicativo baixa a versão nova, confere a integridade e reabre \
+                             sozinho. As VPNs conectadas caem por alguns segundos e voltam em \
+                             seguida.",
+                            "The app downloads the new version, verifies it and reopens by \
+                             itself. Connected VPNs drop for a few seconds and then come back."
+                        )
                     } else {
-                        "Esta versão precisa ser baixada pela página."
+                        tr!(
+                            "Esta versão precisa ser baixada pela página.",
+                            "This version must be downloaded from the release page."
+                        )
                     });
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if v.instalavel() {
                             let btn = egui::Button::new(
-                                egui::RichText::new("Atualizar agora").color(egui::Color32::WHITE),
+                                egui::RichText::new(tr!("Atualizar agora", "Update now"))
+                                    .color(egui::Color32::WHITE),
                             )
                             .fill(ACCENT);
                             if ui.add(btn).clicked() {
                                 instalar = true;
                             }
                         }
-                        if ui.button("Ver novidades").clicked() {
+                        if ui.button(tr!("Ver novidades", "What's new")).clicked() {
                             let _ = open::that(&v.pagina);
                         }
-                        if ui.button("Agora não").clicked() {
+                        if ui.button(tr!("Agora não", "Not now")).clicked() {
                             fechar = true;
                         }
                     });
                 }
                 Estado::Baixando(v, fracao) => {
-                    ui.label(format!("Baixando a versão {}...", v.numero));
+                    ui.label(trf!("Baixando a versão {}...", "Downloading version {}...", v.numero));
                     ui.add(egui::ProgressBar::new(*fracao).show_percentage());
                 }
                 Estado::Reiniciando(v) => {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label(format!(
+                        ui.label(trf!(
                             "Versão {} instalada. Reabrindo o aplicativo...",
+                            "Version {} installed. Reopening the app...",
                             v.numero
                         ));
                     });
@@ -1647,13 +1855,13 @@ impl App {
                     ui.colored_label(egui::Color32::from_rgb(0xdc, 0x26, 0x26), erro);
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if v.instalavel() && ui.button("Tentar de novo").clicked() {
+                        if v.instalavel() && ui.button(tr!("Tentar de novo", "Try again")).clicked() {
                             instalar = true;
                         }
-                        if ui.button("Abrir página da versão").clicked() {
+                        if ui.button(tr!("Abrir página da versão", "Open release page")).clicked() {
                             let _ = open::that(&v.pagina);
                         }
-                        if ui.button("Fechar").clicked() {
+                        if ui.button(tr!("Fechar", "Close")).clicked() {
                             fechar = true;
                         }
                     });
@@ -1677,7 +1885,11 @@ impl App {
         let Some(ed) = self.editor.as_mut() else { return };
 
         ui.label(
-            egui::RichText::new(if ed.nova { "Nova conta" } else { "Editar conta" })
+            egui::RichText::new(if ed.nova {
+                tr!("Nova conta", "New account")
+            } else {
+                tr!("Editar conta", "Edit account")
+            })
                 .size(18.0)
                 .strong(),
         );
@@ -1687,34 +1899,34 @@ impl App {
             .max_height((ui.available_height() - 60.0).max(120.0))
             .auto_shrink([false, true])
             .show(ui, |ui| {
-                rotulo(ui, "NOME", dark);
+                rotulo(ui, tr!("NOME", "NAME"), dark);
                 ui.add(
                     egui::TextEdit::singleline(&mut ed.conta.nome)
-                        .hint_text("ex.: Trabalho, Cliente X")
+                        .hint_text(tr!("ex.: Trabalho, Cliente X", "e.g. Work, Client X"))
                         .desired_width(f32::INFINITY),
                 );
                 ui.add_space(4.0);
 
-                rotulo(ui, "ARQUIVO DE CONFIGURAÇÃO (.OVPN)", dark);
+                rotulo(ui, tr!("ARQUIVO DE CONFIGURAÇÃO (.OVPN)", "CONFIGURATION FILE (.OVPN)"), dark);
                 ui.horizontal(|ui| {
                     let mut nome_arquivo = ed.conta.arquivo();
                     if nome_arquivo.is_empty() {
-                        nome_arquivo = "nenhum arquivo selecionado".into();
+                        nome_arquivo = tr!("nenhum arquivo selecionado", "no file selected").into();
                     }
                     let largura = ui.available_width() - 118.0;
                     ui.add_enabled(
                         false,
                         egui::TextEdit::singleline(&mut nome_arquivo).desired_width(largura),
                     );
-                    if ui.button("Procurar...").clicked() {
+                    if ui.button(tr!("Procurar...", "Browse...")).clicked() {
                         let inicio = PathBuf::from(&ed.conta.config)
                             .parent()
                             .map(PathBuf::from)
                             .filter(|p| p.is_dir())
                             .or_else(|| config_dirs().into_iter().find(|d| d.is_dir()));
                         let mut dlg = rfd::FileDialog::new()
-                            .add_filter("Config OpenVPN", &["ovpn"])
-                            .set_title("Escolha o arquivo .ovpn");
+                            .add_filter(tr!("Config OpenVPN", "OpenVPN config"), &["ovpn"])
+                            .set_title(tr!("Escolha o arquivo .ovpn", "Choose the .ovpn file"));
                         if let Some(dir) = inicio {
                             dlg = dlg.set_directory(dir);
                         }
@@ -1730,14 +1942,14 @@ impl App {
                 });
                 ui.add_space(4.0);
 
-                rotulo(ui, "USUÁRIO", dark);
+                rotulo(ui, tr!("USUÁRIO", "USERNAME"), dark);
                 ui.add(
                     egui::TextEdit::singleline(&mut ed.conta.usuario)
                         .desired_width(f32::INFINITY),
                 );
                 ui.add_space(4.0);
 
-                rotulo(ui, "AUTENTICAÇÃO", dark);
+                rotulo(ui, tr!("AUTENTICAÇÃO", "AUTHENTICATION"), dark);
                 ui.horizontal_wrapped(|ui| {
                     for a in Autenticacao::TODAS {
                         ui.radio_value(&mut ed.conta.autenticacao, a, a.rotulo());
@@ -1746,7 +1958,7 @@ impl App {
                 ui.add_space(4.0);
 
                 if ed.conta.autenticacao.usa_senha() {
-                    rotulo(ui, "SENHA", dark);
+                    rotulo(ui, tr!("SENHA", "PASSWORD"), dark);
                     ui.horizontal(|ui| {
                         let largura = ui.available_width() - 98.0;
                         ui.add(
@@ -1754,17 +1966,20 @@ impl App {
                                 .password(!ed.mostrar_senha)
                                 .desired_width(largura),
                         );
-                        ui.checkbox(&mut ed.mostrar_senha, "mostrar");
+                        ui.checkbox(&mut ed.mostrar_senha, tr!("mostrar", "show"));
                     });
                     ui.add_space(4.0);
                 }
 
                 if ed.conta.autenticacao.usa_token() {
                     ui.horizontal(|ui| {
-                        rotulo(ui, "SEED DO GOOGLE AUTHENTICATOR", dark);
+                        rotulo(ui, tr!("SEED DO GOOGLE AUTHENTICATOR", "GOOGLE AUTHENTICATOR SEED"), dark);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
-                                .button(egui::RichText::new("Importar QR Code...").small())
+                                .button(
+                                    egui::RichText::new(tr!("Importar QR Code...", "Import QR code..."))
+                                        .small(),
+                                )
                                 .clicked()
                             {
                                 abrir_qr = true;
@@ -1778,14 +1993,15 @@ impl App {
                                 .password(!ed.mostrar_seed)
                                 .desired_width(largura),
                         );
-                        ui.checkbox(&mut ed.mostrar_seed, "mostrar");
+                        ui.checkbox(&mut ed.mostrar_seed, tr!("mostrar", "show"));
                     });
                     // previa do token: confere com o celular antes de salvar
                     if let Some(seed) = totp::normalize_seed(&ed.conta.seed) {
                         if let Some(token) = totp::totp_now(&seed) {
                             ui.label(
-                                egui::RichText::new(format!(
+                                egui::RichText::new(trf!(
                                     "Token atual: {} {}   ·   muda em {}s",
+                                    "Current token: {} {}   ·   changes in {}s",
                                     &token[..3],
                                     &token[3..],
                                     totp::seconds_remaining()
@@ -1804,12 +2020,14 @@ impl App {
 
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            let btn = egui::Button::new(egui::RichText::new("Salvar").color(egui::Color32::WHITE))
+            let btn = egui::Button::new(
+                egui::RichText::new(tr!("Salvar", "Save")).color(egui::Color32::WHITE),
+            )
                 .fill(ACCENT);
             if ui.add(btn).clicked() {
                 salvar = true;
             }
-            if ui.button("Cancelar").clicked() {
+            if ui.button(tr!("Cancelar", "Cancel")).clicked() {
                 cancelar = true;
             }
         });
@@ -1838,7 +2056,12 @@ impl App {
             }
             match c.validar() {
                 Ok(()) => {
-                    estado::log(c.nome_exibicao(), if ed.nova { "Conta criada." } else { "Conta atualizada." });
+                    let msg = if ed.nova {
+                        tr!("Conta criada.", "Account created.")
+                    } else {
+                        tr!("Conta atualizada.", "Account updated.")
+                    };
+                    estado::log(c.nome_exibicao(), msg);
                     motor::get().salvar_conta(c);
                     self.editor = None;
                     self.qr_open = false;
@@ -1853,13 +2076,14 @@ impl App {
         let mut open_flag = true;
         let mut do_file = false;
         let mut do_clip = false;
-        egui::Window::new("Importar QR Code")
+        egui::Window::new(tr!("Importar QR Code", "Import QR code"))
+            .id(egui::Id::new("janela_qr"))
             .open(&mut open_flag)
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
-                ui.label(
+                ui.label(tr!(
                     "Quando o suporte cadastra seu token, você recebe um QR Code —\n\
                      o mesmo que é escaneado no app Google Authenticator do celular.\n\
                      Esse QR Code contém o usuário e a seed:\n\n\
@@ -1868,17 +2092,26 @@ impl App {
                      2. Use um dos botões abaixo;\n\
                      3. Confira os campos preenchidos e clique em Salvar.\n\n\
                      Se você não tem o QR Code, peça ao suporte o recadastramento.",
-                );
+                    "When support enrolls your token, you receive a QR code —\n\
+                     the same one scanned with the Google Authenticator phone app.\n\
+                     That QR code contains the username and the seed:\n\n\
+                     1. Save the QR code image on the computer (or copy it with\n\
+                        PrintScreen / Snipping Tool);\n\
+                     2. Use one of the buttons below;\n\
+                     3. Check the filled-in fields and click Save.\n\n\
+                     If you don't have the QR code, ask support to enroll you again."
+                ));
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     let pick = egui::Button::new(
-                        egui::RichText::new("Escolher imagem...").color(egui::Color32::WHITE),
+                        egui::RichText::new(tr!("Escolher imagem...", "Choose image..."))
+                            .color(egui::Color32::WHITE),
                     )
                     .fill(ACCENT);
                     if ui.add(pick).clicked() {
                         do_file = true;
                     }
-                    if ui.button("Colar imagem copiada").clicked() {
+                    if ui.button(tr!("Colar imagem copiada", "Paste copied image")).clicked() {
                         do_clip = true;
                     }
                 });
@@ -1924,7 +2157,11 @@ impl eframe::App for App {
                             .min_size(egui::vec2(40.0, 32.0));
                         if ui
                             .add(btn)
-                            .on_hover_text(if self.dark { "Tema claro" } else { "Tema escuro" })
+                            .on_hover_text(if self.dark {
+                                tr!("Tema claro", "Light theme")
+                            } else {
+                                tr!("Tema escuro", "Dark theme")
+                            })
                             .clicked()
                         {
                             self.dark = !self.dark;
@@ -1932,19 +2169,24 @@ impl eframe::App for App {
                             motor::get().salvar_tema(self.dark);
                         }
                         if self.tela == Tela::Inicio {
-                            let b = egui::Button::new("Contas").min_size(egui::vec2(0.0, 32.0));
-                            if ui.add(b).on_hover_text("Cadastrar e editar contas").clicked() {
+                            let b = egui::Button::new(tr!("Contas", "Accounts"))
+                                .min_size(egui::vec2(0.0, 32.0));
+                            let dica = tr!("Cadastrar e editar contas", "Add and edit accounts");
+                            if ui.add(b).on_hover_text(dica).clicked() {
                                 self.tela = Tela::Contas;
                             }
                         }
                         // versao nova: so um link discreto no cabecalho
                         if let Some(v) = atualizacao::disponivel() {
-                            let texto = egui::RichText::new(format!("Versão {v} disponível"))
+                            let texto = egui::RichText::new(trf!(
+                                "Versão {v} disponível",
+                                "Version {v} available"
+                            ))
                                 .small()
                                 .color(ACCENT);
                             if ui
                                 .link(texto)
-                                .on_hover_text("Ver e instalar a atualização")
+                                .on_hover_text(tr!("Ver e instalar a atualização", "View and install the update"))
                                 .clicked()
                             {
                                 self.janela_atualizacao = true;
@@ -2011,6 +2253,7 @@ fn main() -> eframe::Result<()> {
         return Ok(()); // outra instancia ja esta rodando e foi avisada
     }
     atualizacao::limpar_restos();
+    i18n::aplicar(motor::get().idioma());
 
     let (rgba, w, h) = load_icon_rgba(include_bytes!("../assets/app_64.png"));
     let icon = egui::IconData {
