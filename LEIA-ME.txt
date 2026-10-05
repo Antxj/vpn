@@ -1,6 +1,8 @@
 VPN - Conexões OpenVPN com token automático do Google Authenticator
 =====================================================================
 
+(English version: READ-ME.txt)
+
 O QUE É
 -------
 Programa que conecta em uma ou várias VPNs ao mesmo tempo, gerando

@@ -1,6 +1,8 @@
 COMPONENTES DE TERCEIROS DISTRIBUIDOS COM O VPN
 =================================================
 
+(English version: THIRD-PARTY-LICENSES.txt)
+
 O proprio VPN e software livre, licenciado sob a GNU General Public
 License versao 3 ou posterior (GPL-3.0-or-later) - texto completo no
 arquivo LICENSE. Codigo-fonte: https://github.com/Antxj/vpn

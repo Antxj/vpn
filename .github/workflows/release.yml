@@ -28,7 +28,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Toolchain Rust (GNU) e MinGW-w64
+      - name: Rust toolchain (GNU) and MinGW-w64
         shell: pwsh
         run: |
           rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
@@ -44,7 +44,7 @@ jobs:
             }
           }
 
-      - name: Versao da tag confere com o Cargo.toml
+      - name: Tag matches the Cargo.toml version
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
@@ -55,16 +55,16 @@ jobs:
 
       # baixa e confere o MSI oficial do OpenVPN, roda os testes, compila e
       # verifica o binario (o mesmo script do build local)
-      - name: Build do release
+      - name: Release build
         shell: pwsh
         run: ./rust/build-release.ps1
 
-      - name: Montar os arquivos
+      - name: Assemble the files
         shell: pwsh
         run: |
           New-Item -ItemType Directory dist | Out-Null
           Copy-Item rust/target/release/vpn.exe dist/VPN.exe
-          Copy-Item LEIA-ME.txt, LICENCAS-TERCEIROS.txt, LICENSE dist/
+          Copy-Item READ-ME.txt, LEIA-ME.txt, THIRD-PARTY-LICENSES.txt, LICENCAS-TERCEIROS.txt, LICENSE dist/
           $hash = (Get-FileHash -Algorithm SHA256 dist/VPN.exe).Hash
           "VPN.exe SHA-256: ``$hash``" >> $env:GITHUB_STEP_SUMMARY
 
@@ -74,7 +74,7 @@ jobs:
           path: dist/
           if-no-files-found: error
 
-      - name: Rascunho do release
+      - name: Draft release
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         env:
@@ -87,7 +87,7 @@ jobs:
             "Ja existe um release para $env:GITHUB_REF_NAME; nenhum rascunho novo foi criado." >> $env:GITHUB_STEP_SUMMARY
             exit 0
           }
-          gh release create $env:GITHUB_REF_NAME dist/VPN.exe dist/LEIA-ME.txt `
-            dist/LICENCAS-TERCEIROS.txt dist/LICENSE `
+          gh release create $env:GITHUB_REF_NAME dist/VPN.exe dist/READ-ME.txt dist/LEIA-ME.txt `
+            dist/THIRD-PARTY-LICENSES.txt dist/LICENCAS-TERCEIROS.txt dist/LICENSE `
             --repo $env:GITHUB_REPOSITORY --draft `
             --title "VPN $env:GITHUB_REF_NAME" --generate-notes

@@ -1,0 +1,66 @@
+THIRD-PARTY COMPONENTS DISTRIBUTED WITH VPN
+===========================================
+
+(Versão em português: LICENCAS-TERCEIROS.txt)
+
+VPN itself is free software, licensed under the GNU General Public
+License version 3 or later (GPL-3.0-or-later) - full text in the LICENSE
+file. Source code: https://github.com/Antxj/vpn
+
+OpenVPN Community Edition
+-------------------------
+The VPN.exe executable embeds the official OpenVPN Community installer
+(OpenVPN-2.7.6-I001-amd64.msi), redistributed without any modification,
+exactly as published by OpenVPN Inc. at:
+
+    https://build.openvpn.net/downloads/releases/
+
+The package is digitally signed by "OpenVPN Inc." and its integrity
+(SHA-256) is verified on every release build.
+
+OpenVPN is free software, licensed under the GNU General Public License
+version 2 (GPLv2). Full license text:
+
+    https://github.com/OpenVPN/openvpn/blob/master/COPYING
+    https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+
+Source code corresponding to the distributed binary:
+
+    https://build.openvpn.net/downloads/releases/openvpn-2.7.6.tar.gz
+
+Trademarks: "OpenVPN" is a registered trademark of OpenVPN Inc. This app
+is not produced, sponsored or endorsed by OpenVPN Inc.; it only uses and
+redistributes the official installer.
+
+Relationship between the programs
+---------------------------------
+VPN is an independent program. It does not modify, link to or
+incorporate OpenVPN code: it only runs openvpn.exe as a separate process
+and talks to it through the management interface (a local socket), the
+same way any user could from the command line.
+
+Rust libraries
+--------------
+The Rust dependencies used in the build (eframe/egui, tray-icon, image,
+rqrr, hmac, sha1, base32, serde, arboard, rfd, url, open, windows-sys and
+their transitive dependencies) are distributed under permissive licenses
+compatible with GPL-3.0: mostly MIT and/or Apache-2.0, and a few under
+Unicode-3.0, Zlib, BSL-1.0, ISC, BSD-2-Clause, BSD-3-Clause, CC0-1.0 or
+Unlicense. The full list can be generated with:
+
+    cargo tree --format "{p} {l}"
+
+Embedded fonts (via egui)
+-------------------------
+The user interface uses egui's default fonts, embedded in the executable:
+
+- Hack (Copyright 2018 Source Foundry Authors) - MIT, with parts under
+  the Bitstream Vera License and parts in the public domain (DejaVu)
+- Ubuntu Light - Ubuntu Font Licence 1.0
+- Noto Emoji - SIL Open Font License 1.1
+- emoji-icon-font (Copyright 2014 John Slegers) - MIT
+
+The full texts of these licenses ship with the epaint_default_fonts
+package:
+
+    https://github.com/emilk/egui/tree/master/crates/epaint_default_fonts/fonts

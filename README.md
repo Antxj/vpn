@@ -79,7 +79,7 @@ without user intervention.
   window
 - **Embedded OpenVPN installer**: users without OpenVPN solve it with one
   click — the app runs the official OpenVPN Inc. MSI (redistributed
-  unmodified, see [LICENCAS-TERCEIROS.txt](LICENCAS-TERCEIROS.txt)) in silent
+  unmodified, see [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt)) in silent
   mode, installing only the core, the service and the TAP-Windows6 driver —
   deliberately **without** the OpenVPN GUI, which would add a second VPN icon
   to the tray
@@ -119,7 +119,7 @@ the window.
 On the first run, Windows SmartScreen may warn about an "unrecognized app":
 click **More info** › **Run anyway**.
 
-Detailed instructions (in Portuguese) in [LEIA-ME.txt](LEIA-ME.txt).
+Detailed instructions in [READ-ME.txt](READ-ME.txt) (Portuguese: [LEIA-ME.txt](LEIA-ME.txt)).
 
 ## For developers
 
@@ -291,4 +291,4 @@ signing. Privacy: see [Privacy](#privacy).
 
 [GPL-3.0-or-later](LICENSE). Third-party components (the official OpenVPN
 installer, Rust libraries and fonts) and their licenses are listed in
-[LICENCAS-TERCEIROS.txt](LICENCAS-TERCEIROS.txt).
+[THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt).
