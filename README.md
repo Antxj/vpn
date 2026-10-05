@@ -1,5 +1,7 @@
 # VPN
 
+**Português** | [English](README.en.md)
+
 Aplicativo Windows que conecta em uma ou **várias VPNs OpenVPN ao mesmo
 tempo**, gerando o token do Google Authenticator automaticamente — sem
 precisar abrir o app do celular a cada conexão. Se uma conexão cair, ela
