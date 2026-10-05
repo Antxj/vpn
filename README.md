@@ -6,6 +6,10 @@
 
 <p align="center"><b>English</b> | <a href="README.pt-BR.md">Português</a></p>
 
+<p align="center">
+  <a href="https://github.com/Antxj/vpn/releases/latest"><img src="https://img.shields.io/github/v/release/Antxj/vpn?label=Download&style=for-the-badge&color=2563eb" alt="Download the latest version"></a>
+</p>
+
 Windows app that connects to one or **several OpenVPN VPNs at the same
 time**, generating the Google Authenticator token automatically — no need to
 open the phone app for every connection. If a connection drops, it
