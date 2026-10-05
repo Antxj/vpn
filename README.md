@@ -1,277 +1,286 @@
 <p align="center">
-  <img src="docs/logo.png" width="112" alt="Ícone do VPN">
+  <img src="docs/logo.png" width="112" alt="VPN icon">
 </p>
 
 <h1 align="center">VPN</h1>
 
-<p align="center"><b>Português</b> | <a href="README.en.md">English</a></p>
+<p align="center"><b>English</b> | <a href="README.pt-BR.md">Português</a></p>
 
-Aplicativo Windows que conecta em uma ou **várias VPNs OpenVPN ao mesmo
-tempo**, gerando o token do Google Authenticator automaticamente — sem
-precisar abrir o app do celular a cada conexão. Se uma conexão cair, ela
-reconecta sozinha com um token novo.
+Windows app that connects to one or **several OpenVPN VPNs at the same
+time**, generating the Google Authenticator token automatically — no need to
+open the phone app for every connection. If a connection drops, it
+reconnects by itself with a fresh token.
 
-Escrito em **Rust**: um único executável nativo de ~12 MB, que já traz o
-instalador oficial do OpenVPN dentro — não é preciso instalar nada antes.
+Written in **Rust**: a single ~12 MB native executable that already ships the
+official OpenVPN installer — nothing needs to be installed beforehand.
 
-| Tema escuro | Tema claro |
+The interface is available in English and Brazilian Portuguese, following
+the Windows language (it can be set under **Accounts** › Language).
+
+| Dark theme | Light theme |
 |---|---|
-| ![Tema escuro](docs/inicio_escuro.png) | ![Tema claro](docs/inicio_claro.png) |
+| ![Dark theme](docs/en/inicio_escuro.png) | ![Light theme](docs/en/inicio_claro.png) |
 
-| Contas | Editar conta |
+| Accounts | Edit account |
 |---|---|
-| ![Lista de contas](docs/contas.png) | ![Editor de conta](docs/editor.png) |
+| ![Account list](docs/en/contas.png) | ![Account editor](docs/en/editor.png) |
 
-Se o OpenVPN Community não estiver instalado, o app avisa e instala sozinho,
-em silêncio, a partir do instalador oficial embutido (a verificação roda a
-cada 5 segundos — assim que o OpenVPN aparece, o aviso some):
+If OpenVPN Community is not installed, the app shows a notice and installs it
+silently from the embedded official installer (the check runs every 5
+seconds — as soon as OpenVPN is found, the notice goes away):
 
-![Aviso de OpenVPN ausente](docs/aviso_openvpn.png)
+![OpenVPN missing notice](docs/en/aviso_openvpn.png)
 
-## Como funciona
+## How it works
 
-Cada conta tem nome, arquivo `.ovpn`, usuário e forma de autenticação. Ao
-ligar o interruptor de uma conta, o aplicativo lança um `openvpn.exe` só para
-ela, com a interface de gerenciamento habilitada (`--management` +
-`--management-query-passwords`), e responde cada pedido de usuário/senha com a
-senha da conta. Quando a conta usa token, ele é gerado (TOTP, RFC 6238) **a
-cada** pedido de autenticação — então a conexão inicial, as renegociações
-periódicas e as reconexões após queda funcionam sem intervenção.
+Each account has a name, an `.ovpn` file, a username and an authentication
+method. When an account's toggle is switched on, the app starts a dedicated
+`openvpn.exe` for it with the management interface enabled (`--management` +
+`--management-query-passwords`) and answers every username/password prompt
+with the account's password. When the account uses a token, it is generated
+(TOTP, RFC 6238) **on every** authentication prompt — so the initial
+connection, periodic renegotiations and reconnections after a drop all work
+without user intervention.
 
-- **Várias contas**: cada uma com seu interruptor na tela inicial, status,
-  IP e tráfego; dá para conectar várias ao mesmo tempo
-- **Três formas de autenticação** por conta: token (Google Authenticator),
-  senha fixa, ou senha + token (a senha seguida do código de 6 dígitos)
-- **Tela de contas**: cadastrar, editar e remover; a edição mostra o token
-  atual para conferir com o celular antes de salvar
-- **Bandeja do sistema**: fechar ou minimizar não desconecta. O ícone resume
-  todas as contas (verde: conectada e nenhuma em transição; âmbar: alguma
-  conectando ou reconectando; cinza: nenhuma conectada), o tooltip lista cada
-  conexão, e o menu do botão direito liga/desliga cada conta, além de
-  "Desconectar todas" e "Sair"
-- **Conexões simultâneas**: cada uma precisa de um adaptador de rede virtual
-  próprio; se todos estiverem ocupados, o app cria mais um sozinho (com o
-  `tapctl.exe` do próprio OpenVPN) e tenta de novo
-- **Túnel completo e túnel dividido juntos**: cada cartão mostra se a VPN
-  leva **toda a internet** (túnel completo) ou **só a rede da VPN** (túnel
-  dividido) — o app descobre isso na primeira conexão, pelas rotas que o
-  servidor criou. Uma de cada pode ficar ligada ao mesmo tempo, em qualquer
-  ordem: antes de ligar uma VPN de túnel dividido, o app fixa uma rota direta
-  (pela rede local) até o servidor dela, para que ela não caia quando a de
-  túnel completo ligar (detalhes em [Rotas](#rotas))
-- **Aviso de rotas conflitantes**: se duas contas mandam toda a internet pela
-  VPN, o app avisa antes de conectar a segunda — só a última funcionaria como
-  rota padrão
-- **Português ou inglês**: segue o idioma do Windows; dá para fixar um dos
-  dois em **Contas** › Idioma
-- **Importação por QR Code**: o mesmo QR usado para cadastrar o Google
-  Authenticator preenche usuário e seed (arquivo de imagem ou print colado)
-- **Instância única**: abrir o exe de novo só restaura a janela existente
-- **Instalador do OpenVPN embutido**: quem não tem o OpenVPN instalado
-  resolve com um clique — o app executa o MSI oficial da OpenVPN Inc.
-  (redistribuído sem modificação, ver [LICENCAS-TERCEIROS.txt](LICENCAS-TERCEIROS.txt))
-  em modo silencioso, instalando apenas o núcleo, o serviço e o driver
-  TAP-Windows6 — de propósito **sem** a interface gráfica do OpenVPN, que
-  colocaria um segundo ícone de VPN na bandeja
-- Contas (usuário, seed e senha) ficam salvas criptografadas com **DPAPI**
-  (amarradas à conta Windows de quem salvou)
-- Os arquivos `.ovpn` originais são usados sem nenhuma modificação
-- **Atualização discreta**: uma vez por dia o app consulta as
-  [Releases](../../releases) deste repositório; havendo versão nova, aparece
-  um link no topo da janela e um item no menu da bandeja. "Atualizar agora"
-  baixa, confere e troca o executável, reabre o app e reconecta as VPNs que
-  estavam ligadas (detalhes em [Atualizações](#atualizações))
+- **Multiple accounts**: each with its own toggle on the home screen, status,
+  IP and traffic; several can be connected at the same time
+- **Three authentication methods** per account: token (Google
+  Authenticator), fixed password, or password + token (the password followed
+  by the 6-digit code)
+- **Accounts screen**: add, edit and remove; the editor shows the
+  current token so it can be compared with the phone before saving
+- **System tray**: closing or minimizing does not disconnect. The icon
+  summarizes all accounts (green: connected and none in transition; amber:
+  some connecting or reconnecting; gray: none connected), the tooltip lists
+  each connection, and the right-click menu toggles each account, plus
+  "Disconnect all" and "Exit"
+- **Simultaneous connections**: each one needs its own virtual network
+  adapter; if all are in use, the app creates another one (with OpenVPN's own
+  `tapctl.exe`) and retries
+- **Full tunnel and split tunnel together**: each card shows whether the VPN
+  carries **all traffic** (full tunnel) or **only the VPN's network** (split
+  tunnel) — the app learns this on the first connection, from the routes the
+  server created. One of each can be on at the same time, in any order: before
+  starting a split-tunnel VPN, the app pins a direct route (through the local
+  network) to its server, so it does not drop when the full-tunnel one
+  connects (details in [Routes](#routes))
+- **Conflicting routes warning**: if two accounts send all traffic through
+  the VPN, the app warns before connecting the second one — only the last one
+  would work as the default route
+- **English or Portuguese**: follows the Windows language; either one can be
+  set under **Accounts** › Language
+- **QR code import**: the same QR code used to enroll Google Authenticator
+  fills in the username and seed (image file or pasted screenshot)
+- **Single instance**: opening the exe again just restores the existing
+  window
+- **Embedded OpenVPN installer**: users without OpenVPN solve it with one
+  click — the app runs the official OpenVPN Inc. MSI (redistributed
+  unmodified, see [LICENCAS-TERCEIROS.txt](LICENCAS-TERCEIROS.txt)) in silent
+  mode, installing only the core, the service and the TAP-Windows6 driver —
+  deliberately **without** the OpenVPN GUI, which would add a second VPN icon
+  to the tray
+- Accounts (username, seed and password) are stored encrypted with **DPAPI**
+  (bound to the Windows account that saved them)
+- The original `.ovpn` files are used without any modification
+- **Unobtrusive updates**: once a day the app checks this repository's
+  [Releases](../../releases); when there is a new version, a link appears at
+  the top of the window and an item in the tray menu. "Update now"
+  downloads, verifies and replaces the executable, reopens the
+  app and reconnects the VPNs that were on (details in [Updates](#updates))
 
-## Requisitos
+## Requirements
 
-- **Windows 10 ou 11** com suporte a DirectX 12
-- O arquivo de configuração `.ovpn` de cada VPN
-- Para contas com token: a seed (a chave base32 do cadastro do Google
-  Authenticator — ou o próprio QR Code recebido do suporte)
+- **Windows 10 or 11** with DirectX 12 support
+- The `.ovpn` configuration file of each VPN
+- For token accounts: the seed (the base32 key from the Google Authenticator
+  enrollment — or the QR code itself)
 
-O OpenVPN Community **não** precisa estar instalado: o app instala sozinho se
-faltar (e usa o que já existe na máquina, quando existe).
+OpenVPN Community does **not** need to be installed: the app installs it if
+missing (and uses the existing installation when there is one).
 
-O aplicativo roda **como administrador** — o OpenVPN precisa disso para criar
-a conexão de rede. O próprio executável pede a permissão ao Windows (tela do
-UAC) ao abrir; se por algum motivo rodar sem ela, um aviso aparece na janela.
+The app runs **as administrator** — OpenVPN needs this to create the network
+connection. The executable itself asks Windows for permission (UAC prompt)
+when it starts; if for some reason it runs without it, a notice appears in
+the window.
 
-## Para usuários
+## For users
 
-1. Baixe o `VPN.exe` na página de [Releases](../../releases)
-2. Abra o programa e aceite a permissão de administrador
-3. Se aparecer o aviso amarelo, clique em **Instalar agora** e aguarde ~1 min
-4. Em **Contas** › **Nova conta**, escolha o `.ovpn`, informe o usuário e a
-   autenticação (ou use **Importar QR Code…**) e salve
-5. Na tela inicial, ligue o interruptor da conta
+1. Download `VPN.exe` from the [Releases](../../releases) page
+2. Open it and accept the administrator prompt
+3. If the yellow notice appears, click **Install now** and wait ~1 minute
+4. Under **Accounts** › **New account**, pick the `.ovpn` file, enter the
+   username and authentication (or use **Import QR code…**) and save
+5. On the home screen, switch the account's toggle on
 
-Na primeira execução o Windows SmartScreen pode avisar sobre "aplicativo não
-reconhecido": clique em **Mais informações** › **Executar assim mesmo**.
+On the first run, Windows SmartScreen may warn about an "unrecognized app":
+click **More info** › **Run anyway**.
 
-Instruções detalhadas em [LEIA-ME.txt](LEIA-ME.txt).
+Detailed instructions (in Portuguese) in [LEIA-ME.txt](LEIA-ME.txt).
 
-## Para desenvolvedores
+## For developers
 
-Requisitos: [Rust](https://rustup.rs) (toolchain `stable-x86_64-pc-windows-gnu`)
-e MinGW-w64 ([WinLibs](https://winlibs.com)) no PATH — ou o toolchain MSVC com
-o Visual Studio Build Tools.
+Requirements: [Rust](https://rustup.rs) (toolchain
+`stable-x86_64-pc-windows-gnu`) and MinGW-w64 ([WinLibs](https://winlibs.com))
+on the PATH — or the MSVC toolchain with Visual Studio Build Tools.
 
 ```powershell
 cd rust
-cargo test               # TOTP, contas, estado, adaptadores, QR, MSI, atualizacao, rotas, idioma
-cargo test -- --ignored rota_direta   # cria e remove uma rota de verdade (precisa de admin)
-.\build-release.ps1      # baixa e confere o MSI, testa e gera o release (~12 MB)
+cargo test               # TOTP, accounts, state, adapters, QR, MSI, updates, routes, language
+cargo test -- --ignored rota_direta   # creates and removes a real route (needs admin)
+.\build-release.ps1      # downloads and verifies the MSI, tests and builds the release (~12 MB)
 ```
 
-O `build-release.ps1` é o **único** jeito correto de gerar um release: ele
-baixa o instalador oficial do OpenVPN (`rust/assets/openvpn.msi`, fora do
-repositório), confere SHA-256 e assinatura da OpenVPN Inc., remove os
-caminhos locais do binário e valida o resultado. Um `cargo build --release`
-avulso gera um executável **sem** o instalador embutido e com caminhos da
-máquina.
+`build-release.ps1` is the **only** correct way to build a release: it
+downloads the official OpenVPN installer (`rust/assets/openvpn.msi`, not in
+the repository), verifies its SHA-256 and OpenVPN Inc. signature, removes
+local paths from the binary and validates the result. A plain
+`cargo build --release` produces an executable **without** the embedded
+installer and with machine paths.
 
-Estrutura:
+Structure:
 
-- [`main.rs`](rust/src/main.rs) — interface (egui/WGPU com DirectX 12) e bandeja
-- [`motor.rs`](rust/src/motor.rs) — contas e conexões ativas (usado pela
-  interface e pelo menu da bandeja)
-- [`vpn.rs`](rust/src/vpn.rs) — uma conexão: thread do `openvpn.exe`, interface
-  de gerenciamento e criação de adaptador sob demanda
-- [`estado.rs`](rust/src/estado.rs) — estado compartilhado por conta e log;
-  escrito pelas conexões, lido pela interface e pela bandeja
-- [`contas.rs`](rust/src/contas.rs) — modelo de conta, autenticação e validação
-- [`dpapi.rs`](rust/src/dpapi.rs) — criptografia e persistência
-- [`rotas.rs`](rust/src/rotas.rs) — rota direta até o servidor e detecção do
-  tipo de túnel (IP Helper do Windows)
-- [`i18n.rs`](rust/src/i18n.rs) — idioma (português/inglês) e as macros
-  `tr!`/`trf!` dos textos
-- [`atualizacao.rs`](rust/src/atualizacao.rs) — verificação e instalação de
-  versões novas (WinHTTP, SHA-256 pelo BCrypt e assinatura pelo WinVerifyTrust)
+- [`main.rs`](rust/src/main.rs) — user interface (egui/WGPU with DirectX 12)
+  and tray
+- [`motor.rs`](rust/src/motor.rs) — accounts and active connections (used by
+  the interface and by the tray menu)
+- [`vpn.rs`](rust/src/vpn.rs) — one connection: `openvpn.exe` thread,
+  management interface and on-demand adapter creation
+- [`estado.rs`](rust/src/estado.rs) — shared per-account state and log;
+  written by the connections, read by the interface and the tray
+- [`contas.rs`](rust/src/contas.rs) — account model, authentication and
+  validation
+- [`dpapi.rs`](rust/src/dpapi.rs) — encryption and persistence
+- [`rotas.rs`](rust/src/rotas.rs) — direct route to the server and tunnel
+  type detection (Windows IP Helper)
+- [`i18n.rs`](rust/src/i18n.rs) — language (Portuguese/English) and the
+  `tr!`/`trf!` text macros
+- [`atualizacao.rs`](rust/src/atualizacao.rs) — checking for and installing
+  new versions (WinHTTP, SHA-256 via BCrypt and signature via WinVerifyTrust)
 - [`totp.rs`](rust/src/totp.rs) (RFC 6238), [`qr.rs`](rust/src/qr.rs),
   [`installer.rs`](rust/src/installer.rs), [`single.rs`](rust/src/single.rs)
 
-Variáveis úteis para desenvolvimento e testes:
+Useful variables for development and testing:
 
-| Variável | Efeito |
+| Variable | Effect |
 |---|---|
-| `VPN_DEV_NOUAC=1` (no build) | gera um executável que não pede UAC |
-| `VPN_OPENVPN` | aponta um `openvpn.exe` alternativo (inexistente = força o aviso) |
-| `VPN_INSTANCIA` | separa uma instância de teste do app de uso diário |
-| `VPN_SKIP_HINT` | não mostra o aviso da primeira ida à bandeja |
-| `VPN_CAPTURA` | capturas de tela da documentação: esconde o aviso de administrador; com `contas`, `editar`, `nova` ou `atualizacao`, abre direto naquela tela |
-| `VPN_IDIOMA` | força `pt` ou `en` (capturas de tela) |
-| `VPN_ATUALIZACAO_URL` | consulta outro endereço no lugar da API do GitHub (testes da atualização) |
-| `APPDATA` | redirecione para uma pasta de teste para não tocar nas contas reais |
+| `VPN_DEV_NOUAC=1` (at build time) | builds an executable that does not request UAC |
+| `VPN_OPENVPN` | points to an alternative `openvpn.exe` (non-existent = forces the notice) |
+| `VPN_INSTANCIA` | separates a test instance from the everyday app |
+| `VPN_SKIP_HINT` | does not show the first-time tray notification |
+| `VPN_CAPTURA` | documentation screenshots: hides the administrator notice; with `contas`, `editar`, `nova` or `atualizacao`, opens directly on that screen |
+| `VPN_IDIOMA` | forces `pt` or `en` (screenshots) |
+| `VPN_ATUALIZACAO_URL` | queries another address instead of the GitHub API (update tests) |
+| `APPDATA` | redirect to a test folder so the real accounts are not touched |
 
-## Atualizações
+## Updates
 
-Não há servidor próprio: o app consulta
-`api.github.com/repos/Antxj/vpn/releases/latest` 30 segundos depois de abrir e
-depois uma vez por dia. Esse endereço ignora pré-lançamentos, então uma versão
-só chega aos usuários quando é publicada como definitiva. A consulta não envia
-dados do usuário (o GitHub vê apenas o IP e a versão do app no User-Agent) e
-pode ser desligada em **Contas** › "Procurar novas versões automaticamente".
+There is no dedicated server: the app queries
+`api.github.com/repos/Antxj/vpn/releases/latest` 30 seconds after opening and
+then once a day. That endpoint ignores pre-releases, so a version only reaches
+users when it is published as final. The request sends no user data (GitHub
+only sees the IP address and the app version in the User-Agent) and can be
+turned off under **Accounts** › "Check for new versions automatically".
 
-Nada abre sozinho: havendo versão nova, aparece apenas o link azul
-"Versão X disponível" no topo da janela (e um item no menu da bandeja). A
-janela abaixo só abre quando o usuário clica nele:
+Nothing opens by itself: when there is a new version, only the blue
+"Version X available" link appears at the top of the window (plus an item in
+the tray menu). The window below only opens when the user clicks it:
 
-![Atualização disponível](docs/atualizacao.png)
+![Update available](docs/en/atualizacao.png)
 
-Ao clicar em **Atualizar agora**:
+When the user clicks **Update now**:
 
-1. o `VPN.exe` da release é baixado e só é aceito se tiver exatamente o SHA-256
-   que o GitHub publica para o anexo;
-2. se o executável em uso tem assinatura digital, o novo precisa ter
-   assinatura válida **do mesmo editor** — a partir da primeira versão
-   assinada, nenhuma versão sem assinatura é instalada;
-3. o executável atual é renomeado para `VPN.exe.antigo` (apagado na abertura
-   seguinte) e o novo ocupa o lugar dele;
-4. o app desconecta as VPNs, fecha, e a versão nova abre sozinha e religa as
-   contas que estavam conectadas.
+1. the release's `VPN.exe` is downloaded and only accepted if it has exactly
+   the SHA-256 that GitHub publishes for the asset;
+2. if the running executable is digitally signed, the new one must have a
+   valid signature **from the same publisher** — from the first signed
+   version on, no unsigned version is ever installed;
+3. the current executable is renamed to `VPN.exe.antigo` (deleted on the
+   next start) and the new one takes its place;
+4. the app disconnects the VPNs and closes; the new version opens by itself
+   and reconnects the accounts that were connected.
 
-## Rotas
+## Routes
 
-Há dois tipos de VPN:
+There are two kinds of VPN:
 
-- **túnel completo** (*full tunnel*): toda a internet sai pela VPN — o
-  servidor manda `redirect-gateway` e o OpenVPN cria as rotas `0.0.0.0/1` e
-  `128.0.0.0/1` pela VPN;
-- **túnel dividido** (*split tunnel*): só as redes da empresa vão pela VPN; o
-  resto usa a internet normal.
+- **full tunnel**: all internet traffic goes through the VPN — the server
+  sends `redirect-gateway` and OpenVPN creates the `0.0.0.0/1` and
+  `128.0.0.0/1` routes through the VPN;
+- **split tunnel**: only the company networks go through the VPN; everything
+  else uses the regular internet connection.
 
-Uma de cada ao mesmo tempo funciona, porque o Windows usa sempre a rota mais
-específica. O problema era outro: ao ligar a de túnel completo, o tráfego da de
-túnel dividido **até o próprio servidor** passava a ir por dentro da outra, e
-ela caía. Por isso, antes de iniciar uma VPN que não é de túnel completo, o app
-cria uma rota `/32` para cada servidor do `.ovpn` pelo gateway da rede local
-(ignorando adaptadores de VPN). A rota é removida quando a conexão termina e
-nunca sobrevive a uma reinicialização do Windows.
+One of each at the same time works, because Windows always uses the most
+specific route. The problem was a different one: when the full-tunnel VPN
+connected, the split-tunnel VPN's traffic **to its own server** started going
+through the other VPN, and it dropped. So, before starting a VPN that is not a
+full tunnel, the app creates a `/32` route to each server in the `.ovpn` file
+through the local network gateway (ignoring VPN adapters). The route is
+removed when the connection ends and never survives a Windows restart.
 
-O tipo de cada VPN é descoberto ao conectar: o app olha se o adaptador dela
-recebeu a rota padrão (ou as duas metades `0.0.0.0/1` + `128.0.0.0/1`). Isso
-pega também o caso comum em que o `redirect-gateway` vem do servidor e não do
-arquivo. O resultado fica salvo na conta, aparece no cartão e alimenta o aviso
-de duas VPNs de túnel completo. Trocar o arquivo `.ovpn` da conta apaga o tipo
-salvo.
+Each VPN's type is learned when it connects: the app checks whether its
+adapter received the default route (or both halves `0.0.0.0/1` +
+`128.0.0.0/1`). This also covers the common case where `redirect-gateway`
+comes from the server rather than from the file. The result is saved in the
+account, shown on the card and used by the two-full-tunnels warning. Changing
+the account's `.ovpn` file clears the saved type.
 
-Limite conhecido: com as duas ligadas, nomes internos da VPN de túnel dividido
-(como `intranet.empresa.local`) podem deixar de resolver se a de túnel
-completo assumir o DNS. Se isso acontecer, abra uma issue.
+Known limitation: with both connected, internal names of the split-tunnel VPN
+(such as `intranet.company.local`) may stop resolving if the full-tunnel VPN
+takes over DNS. If that happens, please open an issue.
 
-## Segurança
+## Security
 
-- Seeds e senhas **nunca** são gravadas em texto plano: apenas criptografadas
-  via DPAPI em `%APPDATA%\VPN\contas.dat`
-- Nenhuma senha/token vai para arquivo — a senha é enviada ao OpenVPN pela
-  interface de gerenciamento, que escuta somente em `127.0.0.1`
-- O log de cada conexão do OpenVPN fica em `%APPDATA%\VPN\logs\` (útil para o
-  suporte); nos níveis de log usuais (`verb` até 4) o OpenVPN não registra
-  senhas nem tokens
-- Falhas ao iniciar a interface são registradas em
-  `%APPDATA%\VPN\startup-error.log`; o log contém somente detalhes técnicos
-  da inicialização gráfica
-- Arquivos `.ovpn` estão no `.gitignore` (contêm chave privada) — **nunca**
-  os commite neste repositório
+- Seeds and passwords are **never** stored in plain text: only encrypted via
+  DPAPI in `%APPDATA%\VPN\contas.dat`
+- No password/token is written to a file — the password is sent to OpenVPN
+  through the management interface, which listens only on `127.0.0.1`
+- Each OpenVPN connection log is kept in `%APPDATA%\VPN\logs\` (useful for
+  support); at the usual log levels (`verb` up to 4) OpenVPN does not log
+  passwords or tokens
+- User interface startup failures are logged in
+  `%APPDATA%\VPN\startup-error.log`; the log only contains technical details
+  of the graphics initialization
+- `.ovpn` files are in `.gitignore` (they contain private keys) — **never**
+  commit them to this repository
 
-## Privacidade
+## Privacy
 
-O app não coleta nem envia dados do usuário. As únicas conexões de rede são:
+The app does not collect or send user data. Its only network connections are:
 
-- as **VPNs configuradas pelo próprio usuário** (servidores definidos nos
-  arquivos `.ovpn` de cada conta);
-- a **verificação de versões novas** no GitHub (descrita em
-  [Atualizações](#atualizações)), que não envia dados do usuário — o GitHub vê
-  apenas o IP e a versão do app — e pode ser desligada em **Contas** ›
-  "Procurar novas versões automaticamente". Vale a
-  [política de privacidade do GitHub](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
+- the **VPNs configured by the user** (servers defined in each account's
+  `.ovpn` file);
+- the **check for new versions** on GitHub (described in
+  [Updates](#updates)), which sends no user data — GitHub only sees the IP
+  address and the app version — and can be turned off under **Accounts** ›
+  "Check for new versions automatically". The
+  [GitHub privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)
+  applies.
 
-Contas, senhas e seeds ficam somente no computador, criptografadas (ver
-[Segurança](#segurança)).
+Accounts, passwords and seeds stay on the computer only, encrypted (see
+[Security](#security)).
 
-## Desinstalação
+## Uninstalling
 
-O app não tem instalador: basta sair dele (bandeja › **Sair**) e apagar o
-`VPN.exe`. Para remover também as contas salvas e os logs, apague a pasta
-`%APPDATA%\VPN`. Se o OpenVPN Community foi instalado pelo app, ele pode ser
-removido em **Configurações do Windows › Aplicativos › Aplicativos
-instalados › OpenVPN**.
+The app has no installer: exit it (tray › **Exit**) and delete `VPN.exe`. To
+also remove the saved accounts and logs, delete the `%APPDATA%\VPN` folder.
+If OpenVPN Community was installed by the app, it can be removed under
+**Windows Settings › Apps › Installed apps › OpenVPN**.
 
 ## Code signing policy
 
 Free code signing provided by [SignPath.io](https://about.signpath.io),
 certificate by [SignPath Foundation](https://signpath.org).
 
-- Autores e revisores (committers and reviewers): [Antxj](https://github.com/Antxj)
-- Aprovadores (approvers): [Antxj](https://github.com/Antxj)
+- Committers and reviewers: [Antxj](https://github.com/Antxj)
+- Approvers: [Antxj](https://github.com/Antxj)
 
-Os executáveis assinados são gerados exclusivamente pelo
-[workflow de release](.github/workflows/release.yml) no GitHub Actions, a
-partir do código deste repositório, e cada release é aprovado manualmente
-antes da assinatura. Privacidade: ver [Privacidade](#privacidade).
+Signed executables are built exclusively by the
+[release workflow](.github/workflows/release.yml) on GitHub Actions, from the
+source code in this repository, and each release is manually approved before
+signing. Privacy: see [Privacy](#privacy).
 
-## Licença
+## License
 
-[GPL-3.0-or-later](LICENSE). Componentes de terceiros (o instalador oficial do
-OpenVPN, bibliotecas Rust e fontes) e suas licenças estão em
+[GPL-3.0-or-later](LICENSE). Third-party components (the official OpenVPN
+installer, Rust libraries and fonts) and their licenses are listed in
 [LICENCAS-TERCEIROS.txt](LICENCAS-TERCEIROS.txt).
