@@ -1,6 +1,10 @@
-# VPN
+<p align="center">
+  <img src="docs/logo.png" width="112" alt="Ícone do VPN">
+</p>
 
-**Português** | [English](README.en.md)
+<h1 align="center">VPN</h1>
+
+<p align="center"><b>Português</b> | <a href="README.en.md">English</a></p>
 
 Aplicativo Windows que conecta em uma ou **várias VPNs OpenVPN ao mesmo
 tempo**, gerando o token do Google Authenticator automaticamente — sem

@@ -1,6 +1,10 @@
-# VPN
+<p align="center">
+  <img src="docs/logo.png" width="112" alt="VPN icon">
+</p>
 
-[Português](README.md) | **English**
+<h1 align="center">VPN</h1>
+
+<p align="center"><a href="README.md">Português</a> | <b>English</b></p>
 
 Windows app that connects to one or **several OpenVPN VPNs at the same
 time**, generating the Google Authenticator token automatically — no need to
