@@ -1,0 +1,64 @@
+COMPONENTES DE TERCEIROS DISTRIBUIDOS COM O VPN
+=================================================
+
+O proprio VPN e software livre, licenciado sob a GNU General Public
+License versao 3 ou posterior (GPL-3.0-or-later) - texto completo no
+arquivo LICENSE. Codigo-fonte: https://github.com/Antxj/vpn
+
+OpenVPN Community Edition
+-------------------------
+O executavel VPN.exe embute o instalador oficial do OpenVPN
+Community (OpenVPN-2.7.6-I001-amd64.msi), redistribuido sem qualquer
+modificacao, exatamente como publicado pela OpenVPN Inc. em:
+
+    https://build.openvpn.net/downloads/releases/
+
+O pacote e assinado digitalmente por "OpenVPN Inc." e sua integridade
+(SHA-256) e conferida a cada geracao de release.
+
+O OpenVPN e software livre, licenciado sob a GNU General Public License
+versao 2 (GPLv2). Texto completo da licenca:
+
+    https://github.com/OpenVPN/openvpn/blob/master/COPYING
+    https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+
+Codigo-fonte correspondente ao binario distribuido:
+
+    https://build.openvpn.net/downloads/releases/openvpn-2.7.6.tar.gz
+
+Marcas: "OpenVPN" e marca registrada da OpenVPN Inc. Este aplicativo nao
+e produzido, patrocinado ou endossado pela OpenVPN Inc.; apenas utiliza e
+redistribui o instalador oficial.
+
+Relacao entre os programas
+--------------------------
+O VPN e um programa independente. Ele nao altera, nao vincula nem
+incorpora codigo do OpenVPN: apenas executa o openvpn.exe como processo
+separado e conversa com ele pela interface de gerenciamento (um socket
+local), da mesma forma que qualquer usuario faria pela linha de comando.
+
+Bibliotecas Rust
+----------------
+As dependencias Rust usadas na compilacao (eframe/egui, tray-icon, image,
+rqrr, hmac, sha1, base32, serde, arboard, rfd, url, open, windows-sys e
+suas dependencias transitivas) sao distribuidas sob licencas permissivas
+compativeis com a GPL-3.0: na grande maioria MIT e/ou Apache-2.0, e
+algumas sob Unicode-3.0, Zlib, BSL-1.0, ISC, BSD-2-Clause, BSD-3-Clause,
+CC0-1.0 ou Unlicense. A lista completa pode ser gerada com:
+
+    cargo tree --format "{p} {l}"
+
+Fontes embutidas (via egui)
+---------------------------
+A interface usa as fontes padrao do egui, embutidas no executavel:
+
+- Hack (Copyright 2018 Source Foundry Authors) - MIT, com partes sob a
+  Bitstream Vera License e partes em dominio publico (DejaVu)
+- Ubuntu Light - Ubuntu Font Licence 1.0
+- Noto Emoji - SIL Open Font License 1.1
+- emoji-icon-font (Copyright 2014 John Slegers) - MIT
+
+Os textos completos dessas licencas acompanham o pacote
+epaint_default_fonts:
+
+    https://github.com/emilk/egui/tree/master/crates/epaint_default_fonts/fonts

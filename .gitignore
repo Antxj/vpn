@@ -1,0 +1,11 @@
+# NUNCA commitar configs de VPN (contem chave privada e certificados)
+*.ovpn
+
+# artefatos de build
+rust/target/
+rust/target-dev/
+__pycache__/
+icon_preview.png
+
+# instalador oficial do OpenVPN: baixado pelo build-release.ps1 (5,6 MB)
+rust/assets/openvpn.msi

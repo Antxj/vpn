@@ -1,0 +1,86 @@
+# Gera o VPN.exe a partir do codigo do repositorio, num ambiente limpo do
+# GitHub, e cria um RASCUNHO de release com os arquivos. O rascunho so vira
+# publico quando alguem revisa e publica manualmente.
+#
+# Disparo: ao enviar uma tag vX.Y.Z (ou manualmente, so para testar o build -
+# nesse caso nenhum release e criado).
+#
+# Acoes de terceiros fixadas pelo hash do commit (nao pela tag, que pode
+# ser movida).
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    permissions:
+      contents: write # criar o rascunho do release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Toolchain Rust (GNU) e MinGW-w64
+        shell: pwsh
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
+          rustup default stable-x86_64-pc-windows-gnu
+          # windres e o linker do toolchain GNU vem do MinGW-w64
+          if (-not (Get-Command windres -ErrorAction SilentlyContinue)) {
+            if (Test-Path C:\mingw64\bin\windres.exe) {
+              "C:\mingw64\bin" >> $env:GITHUB_PATH
+            } else {
+              C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed `
+                mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils
+              "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
+            }
+          }
+
+      - name: Versao da tag confere com o Cargo.toml
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $versao = (Select-String -Path rust/Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ("v$versao" -ne $env:GITHUB_REF_NAME) {
+            throw "A tag $env:GITHUB_REF_NAME nao corresponde a versao $versao do Cargo.toml."
+          }
+
+      # baixa e confere o MSI oficial do OpenVPN, roda os testes, compila e
+      # verifica o binario (o mesmo script do build local)
+      - name: Build do release
+        shell: pwsh
+        run: ./rust/build-release.ps1
+
+      - name: Montar os arquivos
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item rust/target/release/vpn.exe dist/VPN.exe
+          Copy-Item LEIA-ME.txt, LICENCAS-TERCEIROS.txt, LICENSE dist/
+          $hash = (Get-FileHash -Algorithm SHA256 dist/VPN.exe).Hash
+          "VPN.exe SHA-256: ``$hash``" >> $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: VPN
+          path: dist/
+          if-no-files-found: error
+
+      - name: Rascunho do release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME dist/VPN.exe dist/LEIA-ME.txt `
+            dist/LICENCAS-TERCEIROS.txt dist/LICENSE `
+            --repo $env:GITHUB_REPOSITORY --draft `
+            --title "VPN $env:GITHUB_REF_NAME" --generate-notes

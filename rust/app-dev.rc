@@ -1,0 +1,5 @@
+// Variante de desenvolvimento: igual ao app.rc, mas sem exigir admin
+// (para rodar/fotografar a interface sem UAC). Nao usar em release.
+
+1 ICON "assets/icon.ico"
+1 24 "assets/app-dev.manifest"

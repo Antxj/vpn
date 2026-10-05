@@ -1,0 +1,27 @@
+// Recursos do VPN: icone, manifesto UAC e informacoes de versao.
+
+1 ICON "assets/icon.ico"
+
+// RT_MANIFEST (tipo 24), id 1 = CREATEPROCESS_MANIFEST_RESOURCE_ID
+1 24 "assets/app.manifest"
+
+1 VERSIONINFO
+FILEVERSION 1,0,0,0
+PRODUCTVERSION 1,0,0,0
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "041604B0"
+    BEGIN
+      VALUE "FileDescription", "VPN - conexoes OpenVPN com token automatico"
+      VALUE "FileVersion", "1.0.0"
+      VALUE "ProductName", "VPN"
+      VALUE "ProductVersion", "1.0.0"
+      VALUE "OriginalFilename", "VPN.exe"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0416, 0x04B0
+  END
+END
