@@ -252,7 +252,7 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
         // VPN de tunel dividido: o caminho ate o servidor fica fixo na rede
         // local, para nao cair quando outra VPN (de tunel completo) ligar.
         // As rotas vivem ate o fim desta thread (Drop as remove).
-        let _rotas = if conta.tunel_completo() == Some(true) {
+        let mut rotas = if conta.tunel_completo() == Some(true) {
             None
         } else {
             match crate::rotas::fixar_servidores(Path::new(&conta.config)) {
@@ -276,7 +276,7 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
         };
         // ate 2 tentativas: a segunda so acontece se faltou adaptador de rede
         for tentativa in 0..2 {
-            let Some(hwid) = run(&conta, &nome, &openvpn, &stop2) else {
+            let Some(hwid) = run(&conta, &nome, &openvpn, &stop2, &mut rotas) else {
                 break;
             };
             if tentativa > 0 || stop2.load(Ordering::SeqCst) {
@@ -345,7 +345,13 @@ fn registrar_tipo_de_tunel(conta: &Conta, nome: &str, ip_local: Option<&str>) {
 
 /// Executa uma tentativa de conexao. Devolve Some(hwid) quando o OpenVPN
 /// encerrou por falta de adaptador de rede livre (vale tentar de novo).
-fn run(conta: &Conta, nome: &str, openvpn: &Path, stop: &AtomicBool) -> Option<&'static str> {
+fn run(
+    conta: &Conta,
+    nome: &str,
+    openvpn: &Path,
+    stop: &AtomicBool,
+    rotas: &mut Option<crate::rotas::RotasDiretas>,
+) -> Option<&'static str> {
     use std::os::windows::process::CommandExt;
 
     let config = PathBuf::from(&conta.config);
@@ -529,6 +535,19 @@ fn run(conta: &Conta, nome: &str, openvpn: &Path, stop: &AtomicBool) -> Option<&
                     registrar_tipo_de_tunel(conta, nome, ip.as_deref());
                 } else {
                     last_count = None;
+                }
+                // reconectando (ex.: o notebook trocou de Wi-Fi): a rota fixa
+                // do servidor precisa seguir a rede local atual
+                if situacao == Situacao::Reconectando
+                    && rotas.as_mut().is_some_and(|r| r.renovar())
+                {
+                    estado::log(
+                        nome,
+                        tr!(
+                            "A rede local mudou: rota do servidor atualizada.",
+                            "The local network changed: server route updated."
+                        ),
+                    );
                 }
                 estado::definir(&conta.id, situacao, ip);
                 estado::log(nome, trf!("Estado: {state}", "State: {state}"));

@@ -11,8 +11,11 @@
 //! rota direta (/32, pelo gateway da rede local) para cada servidor dela.
 //! Assim a ordem em que as VPNs sao ligadas deixa de importar.
 //!
-//! As rotas sao temporarias (somem ao reiniciar o Windows) e sao removidas
-//! quando a conexao termina.
+//! As rotas sao temporarias (somem ao reiniciar o Windows), sao removidas
+//! quando a conexao termina e sao refeitas se a rede local mudar durante a
+//! conexao (ex.: notebook que troca de Wi-Fi). Servidores com endereco de
+//! rede interna nao sao fixados: so sao alcancaveis por dentro de outra VPN
+//! ou pela propria rede local.
 
 use std::net::{Ipv4Addr, ToSocketAddrs};
 use std::path::Path;
@@ -57,6 +60,21 @@ fn sockaddr(ip: Ipv4Addr) -> SOCKADDR_INET {
     sa.Ipv4.sin_family = AF_INET;
     sa.Ipv4.sin_addr.S_un.S_addr = u32::from(ip).to_be();
     sa
+}
+
+/// Endereco da internet (o unico que faz sentido fixar pela rede local).
+/// Redes internas (10/8, 172.16/12, 192.168/16), CGNAT (100.64/10),
+/// link-local, loopback etc. ficam de fora.
+fn publico(ip: Ipv4Addr) -> bool {
+    let [a, b, ..] = ip.octets();
+    let cgnat = a == 100 && (64..=127).contains(&b);
+    !(ip.is_private()
+        || ip.is_loopback()
+        || ip.is_link_local()
+        || ip.is_unspecified()
+        || ip.is_multicast()
+        || ip.is_broadcast()
+        || cgnat)
 }
 
 /// Tabela de rotas IPv4 do Windows.
@@ -114,47 +132,49 @@ fn rota_padrao_local() -> Option<MIB_IPFORWARD_ROW2> {
 pub struct RotasDiretas {
     criadas: Vec<MIB_IPFORWARD_ROW2>,
     pub ips: Vec<Ipv4Addr>,
+    /// Gateway usado (interface + proximo salto), para notar troca de rede.
+    gateway: (u64, Option<Ipv4Addr>),
 }
 
 impl Drop for RotasDiretas {
     fn drop(&mut self) {
-        for r in &self.criadas {
-            unsafe { DeleteIpForwardEntry2(r) };
-        }
+        self.remover();
     }
 }
 
-/// Fixa uma rota direta (pela rede local) para cada servidor do .ovpn.
-/// Err explica por que nao foi possivel (o app conecta mesmo assim).
-pub fn fixar_servidores(config: &Path) -> Result<RotasDiretas, String> {
-    let texto = std::fs::read_to_string(config).map_err(|e| e.to_string())?;
-    let mut ips: Vec<Ipv4Addr> = Vec::new();
-    for host in servidores(&texto) {
-        // porta qualquer: so interessa o endereco
-        if let Ok(enderecos) = (host.as_str(), 1194).to_socket_addrs() {
-            for a in enderecos {
-                if let std::net::SocketAddr::V4(v4) = a {
-                    let ip = *v4.ip();
-                    if !ip.is_loopback() && !ips.contains(&ip) {
-                        ips.push(ip);
-                    }
-                }
-            }
+fn chave(gw: &MIB_IPFORWARD_ROW2) -> (u64, Option<Ipv4Addr>) {
+    (unsafe { gw.InterfaceLuid.Value }, ipv4(&gw.NextHop))
+}
+
+impl RotasDiretas {
+    fn remover(&mut self) {
+        for r in self.criadas.drain(..) {
+            unsafe { DeleteIpForwardEntry2(&r) };
         }
     }
-    if ips.is_empty() {
-        return Err(tr!(
-            "não consegui descobrir o endereço do servidor",
-            "could not resolve the server address"
-        )
-        .into());
-    }
-    let gw = rota_padrao_local().ok_or_else(|| {
-        tr!("não encontrei a rota da rede local", "could not find the local network route").to_string()
-    })?;
 
-    let mut rotas = RotasDiretas { criadas: Vec::new(), ips: Vec::new() };
-    for ip in ips {
+    /// Chamada quando a VPN reconecta: se a rede local mudou (outro Wi-Fi,
+    /// cabo...), refaz as rotas pelo gateway novo. True se refez.
+    pub fn renovar(&mut self) -> bool {
+        let Some(gw) = rota_padrao_local() else {
+            return false;
+        };
+        if chave(&gw) == self.gateway {
+            return false;
+        }
+        self.remover();
+        let ips = std::mem::take(&mut self.ips);
+        let mut novas = criar(&ips, &gw);
+        // troca o conteudo (o Drop de `novas` fica sem nada para remover)
+        std::mem::swap(self, &mut novas);
+        true
+    }
+}
+
+/// Cria uma rota /32 para cada IP pelo gateway informado.
+fn criar(ips: &[Ipv4Addr], gw: &MIB_IPFORWARD_ROW2) -> RotasDiretas {
+    let mut rotas = RotasDiretas { criadas: Vec::new(), ips: Vec::new(), gateway: chave(gw) };
+    for &ip in ips {
         let mut r: MIB_IPFORWARD_ROW2 = unsafe { std::mem::zeroed() };
         unsafe { InitializeIpForwardEntry(&mut r) };
         r.InterfaceLuid = gw.InterfaceLuid;
@@ -174,7 +194,39 @@ pub fn fixar_servidores(config: &Path) -> Result<RotasDiretas, String> {
             _ => {}
         }
     }
-    Ok(rotas)
+    rotas
+}
+
+/// Fixa uma rota direta (pela rede local) para cada servidor do .ovpn.
+/// Err explica por que nao foi possivel (o app conecta mesmo assim).
+pub fn fixar_servidores(config: &Path) -> Result<RotasDiretas, String> {
+    let texto = std::fs::read_to_string(config).map_err(|e| e.to_string())?;
+    let mut ips: Vec<Ipv4Addr> = Vec::new();
+    for host in servidores(&texto) {
+        // porta qualquer: so interessa o endereco
+        if let Ok(enderecos) = (host.as_str(), 1194).to_socket_addrs() {
+            for a in enderecos {
+                if let std::net::SocketAddr::V4(v4) = a {
+                    let ip = *v4.ip();
+                    if publico(ip) && !ips.contains(&ip) {
+                        ips.push(ip);
+                    }
+                }
+            }
+        }
+    }
+    if ips.is_empty() {
+        return Err(tr!(
+            "servidor em rede interna ou endereço não encontrado",
+            "server on an internal network or address not found"
+        )
+        .into());
+    }
+    let gw = rota_padrao_local().ok_or_else(|| {
+        tr!("não encontrei a rota da rede local", "could not find the local network route").to_string()
+    })?;
+
+    Ok(criar(&ips, &gw))
 }
 
 /// A VPN cujo adaptador tem o IP `ip_local` manda toda a internet por ela?
@@ -234,6 +286,29 @@ mod tests {
     }
 
     #[test]
+    fn so_fixa_enderecos_da_internet() {
+        let ip = |a, b, c, d| Ipv4Addr::new(a, b, c, d);
+        assert!(publico(ip(200, 160, 2, 3)));
+        assert!(publico(ip(8, 8, 8, 8)));
+        assert!(publico(ip(203, 0, 113, 77))); // documentacao: usado no teste de rota
+        for interno in [
+            ip(10, 1, 2, 3),
+            ip(172, 16, 0, 1),
+            ip(172, 31, 255, 254),
+            ip(192, 168, 0, 10),
+            ip(100, 64, 0, 1),   // CGNAT
+            ip(100, 127, 255, 1),
+            ip(169, 254, 1, 1),  // link-local
+            ip(127, 0, 0, 1),
+            ip(0, 0, 0, 0),
+        ] {
+            assert!(!publico(interno), "{interno} nao deveria ser fixado");
+        }
+        assert!(publico(ip(100, 63, 0, 1)) && publico(ip(100, 128, 0, 1)));
+        assert!(publico(ip(172, 32, 0, 1)));
+    }
+
+    #[test]
     fn classifica_tunel_completo_e_dividido() {
         let ip = |a, b, c, d| Ipv4Addr::new(a, b, c, d);
         // tunel completo do OpenVPN (def1) na interface 7
@@ -282,9 +357,16 @@ mod tests {
         };
         assert!(!existe());
         {
-            let rotas = fixar_servidores(&ovpn).expect("deveria fixar a rota");
+            let mut rotas = fixar_servidores(&ovpn).expect("deveria fixar a rota");
             assert_eq!(rotas.ips, vec![alvo]);
             assert!(existe(), "rota nao apareceu na tabela");
+            // mesma rede: nada a refazer
+            assert!(!rotas.renovar());
+            // simula troca de rede: refaz pelo gateway atual
+            rotas.gateway = (0, None);
+            assert!(rotas.renovar());
+            assert_eq!(rotas.ips, vec![alvo]);
+            assert!(existe(), "rota sumiu ao renovar");
         }
         assert!(!existe(), "rota nao foi removida");
         let _ = std::fs::remove_dir_all(&dir);

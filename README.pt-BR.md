@@ -205,8 +205,11 @@ específica. O problema era outro: ao ligar a de túnel completo, o tráfego da 
 túnel dividido **até o próprio servidor** passava a ir por dentro da outra, e
 ela caía. Por isso, antes de iniciar uma VPN que não é de túnel completo, o app
 cria uma rota `/32` para cada servidor do `.ovpn` pelo gateway da rede local
-(ignorando adaptadores de VPN). A rota é removida quando a conexão termina e
-nunca sobrevive a uma reinicialização do Windows.
+(ignorando adaptadores de VPN). A rota é removida quando a conexão termina,
+nunca sobrevive a uma reinicialização do Windows e é refeita se a rede local
+mudar durante a conexão (ex.: notebook que troca de Wi-Fi). Servidores com
+endereço interno (10.x, 172.16–31.x, 192.168.x, 100.64–127.x) não são fixados:
+só são alcançáveis pela própria rede local ou por dentro de outra VPN.
 
 O tipo de cada VPN é descoberto ao conectar: o app olha se o adaptador dela
 recebeu a rota padrão (ou as duas metades `0.0.0.0/1` + `128.0.0.0/1`). Isso

@@ -215,7 +215,11 @@ connected, the split-tunnel VPN's traffic **to its own server** started going
 through the other VPN, and it dropped. So, before starting a VPN that is not a
 full tunnel, the app creates a `/32` route to each server in the `.ovpn` file
 through the local network gateway (ignoring VPN adapters). The route is
-removed when the connection ends and never survives a Windows restart.
+removed when the connection ends, never survives a Windows restart, and is
+recreated if the local network changes while connected (e.g. a laptop moving
+to another Wi-Fi). Servers with internal addresses (10.x, 172.16–31.x,
+192.168.x, 100.64–127.x) are not pinned: they are only reachable through
+the local network itself or through another VPN.
 
 Each VPN's type is learned when it connects: the app checks whether its
 adapter received the default route (or both halves `0.0.0.0/1` +
