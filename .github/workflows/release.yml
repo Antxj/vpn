@@ -80,6 +80,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # tag reenviada (ex.: movida para outro commit): o release ja existe,
+          # nao cria um segundo rascunho com o mesmo nome
+          gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            "Ja existe um release para $env:GITHUB_REF_NAME; nenhum rascunho novo foi criado." >> $env:GITHUB_STEP_SUMMARY
+            exit 0
+          }
           gh release create $env:GITHUB_REF_NAME dist/VPN.exe dist/LEIA-ME.txt `
             dist/LICENCAS-TERCEIROS.txt dist/LICENSE `
             --repo $env:GITHUB_REPOSITORY --draft `
