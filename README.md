@@ -272,18 +272,23 @@ also remove the saved accounts and logs, delete the `%APPDATA%\VPN` folder.
 If OpenVPN Community was installed by the app, it can be removed under
 **Windows Settings › Apps › Installed apps › OpenVPN**.
 
-## Code signing policy
+## Verifying the download
 
-Free code signing provided by [SignPath.io](https://about.signpath.io),
-certificate by [SignPath Foundation](https://signpath.org).
+`VPN.exe` is not digitally signed yet (that is why Windows shows "Unknown
+publisher" and SmartScreen may warn on the first run). Every release is built
+exclusively by the [release workflow](.github/workflows/release.yml) on
+GitHub Actions, from the source code in this repository, and is reviewed
+before being published.
 
-- Committers and reviewers: [Antxj](https://github.com/Antxj)
-- Approvers: [Antxj](https://github.com/Antxj)
+To check that your copy is the published one, compare its SHA-256 with the one
+shown next to `VPN.exe` on the [Releases](../../releases) page:
 
-Signed executables are built exclusively by the
-[release workflow](.github/workflows/release.yml) on GitHub Actions, from the
-source code in this repository, and each release is manually approved before
-signing. Privacy: see [Privacy](#privacy).
+```powershell
+Get-FileHash .\VPN.exe -Algorithm SHA256
+```
+
+The built-in updater does this check by itself before replacing the
+executable.
 
 ## License
 

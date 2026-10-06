@@ -262,18 +262,23 @@ O app não tem instalador: basta sair dele (bandeja › **Sair**) e apagar o
 removido em **Configurações do Windows › Aplicativos › Aplicativos
 instalados › OpenVPN**.
 
-## Code signing policy
+## Conferir o download
 
-Free code signing provided by [SignPath.io](https://about.signpath.io),
-certificate by [SignPath Foundation](https://signpath.org).
+O `VPN.exe` ainda não tem assinatura digital (por isso o Windows mostra
+"Editor desconhecido" e o SmartScreen pode avisar na primeira execução). Toda
+versão é gerada exclusivamente pelo [workflow de release](.github/workflows/release.yml)
+no GitHub Actions, a partir do código deste repositório, e é revisada antes de
+ser publicada.
 
-- Autores e revisores (committers and reviewers): [Antxj](https://github.com/Antxj)
-- Aprovadores (approvers): [Antxj](https://github.com/Antxj)
+Para conferir se a sua cópia é a publicada, compare o SHA-256 dela com o que
+aparece ao lado do `VPN.exe` na página de [Releases](../../releases):
 
-Os executáveis assinados são gerados exclusivamente pelo
-[workflow de release](.github/workflows/release.yml) no GitHub Actions, a
-partir do código deste repositório, e cada release é aprovado manualmente
-antes da assinatura. Privacidade: ver [Privacidade](#privacidade).
+```powershell
+Get-FileHash .\VPN.exe -Algorithm SHA256
+```
+
+A atualização pelo próprio app faz essa conferência sozinha antes de trocar o
+executável.
 
 ## Licença
 
