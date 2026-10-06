@@ -2,7 +2,7 @@
 //! embutido no executavel.
 //!
 //! O MSI e o pacote assinado pela OpenVPN Inc., redistribuido sem
-//! modificacao (ver LICENCAS-TERCEIROS.txt). A instalacao e silenciosa e
+//! modificacao (ver THIRD-PARTY-LICENSES.txt). A instalacao e silenciosa e
 //! escolhe um conjunto minimo de componentes: nucleo, servico e driver
 //! TAP-Windows6 - de proposito SEM a interface grafica do OpenVPN, que
 //! colocaria um segundo icone de VPN na bandeja e confundiria o usuario.

@@ -64,7 +64,7 @@ jobs:
         run: |
           New-Item -ItemType Directory dist | Out-Null
           Copy-Item rust/target/release/vpn.exe dist/VPN.exe
-          Copy-Item READ-ME.txt, LEIA-ME.txt, THIRD-PARTY-LICENSES.txt, LICENCAS-TERCEIROS.txt, LICENSE dist/
+          Copy-Item THIRD-PARTY-LICENSES.txt, LICENSE dist/
           $hash = (Get-FileHash -Algorithm SHA256 dist/VPN.exe).Hash
           "VPN.exe SHA-256: ``$hash``" >> $env:GITHUB_STEP_SUMMARY
 
@@ -87,7 +87,7 @@ jobs:
             "Ja existe um release para $env:GITHUB_REF_NAME; nenhum rascunho novo foi criado." >> $env:GITHUB_STEP_SUMMARY
             exit 0
           }
-          gh release create $env:GITHUB_REF_NAME dist/VPN.exe dist/READ-ME.txt dist/LEIA-ME.txt `
-            dist/THIRD-PARTY-LICENSES.txt dist/LICENCAS-TERCEIROS.txt dist/LICENSE `
+          gh release create $env:GITHUB_REF_NAME dist/VPN.exe `
+            dist/THIRD-PARTY-LICENSES.txt dist/LICENSE `
             --repo $env:GITHUB_REPOSITORY --draft `
             --title "VPN $env:GITHUB_REF_NAME" --generate-notes

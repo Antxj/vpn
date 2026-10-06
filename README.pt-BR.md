@@ -73,7 +73,7 @@ periódicas e as reconexões após queda funcionam sem intervenção.
 - **Instância única**: abrir o exe de novo só restaura a janela existente
 - **Instalador do OpenVPN embutido**: quem não tem o OpenVPN instalado
   resolve com um clique — o app executa o MSI oficial da OpenVPN Inc.
-  (redistribuído sem modificação, ver [LICENCAS-TERCEIROS.txt](LICENCAS-TERCEIROS.txt))
+  (redistribuído sem modificação, ver [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt))
   em modo silencioso, instalando apenas o núcleo, o serviço e o driver
   TAP-Windows6 — de propósito **sem** a interface gráfica do OpenVPN, que
   colocaria um segundo ícone de VPN na bandeja
@@ -111,8 +111,6 @@ UAC) ao abrir; se por algum motivo rodar sem ela, um aviso aparece na janela.
 
 Na primeira execução o Windows SmartScreen pode avisar sobre "aplicativo não
 reconhecido": clique em **Mais informações** › **Executar assim mesmo**.
-
-Instruções detalhadas em [LEIA-ME.txt](LEIA-ME.txt).
 
 ## Para desenvolvedores
 
@@ -281,4 +279,4 @@ antes da assinatura. Privacidade: ver [Privacidade](#privacidade).
 
 [GPL-3.0-or-later](LICENSE). Componentes de terceiros (o instalador oficial do
 OpenVPN, bibliotecas Rust e fontes) e suas licenças estão em
-[LICENCAS-TERCEIROS.txt](LICENCAS-TERCEIROS.txt).
+[THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt) (em inglês).

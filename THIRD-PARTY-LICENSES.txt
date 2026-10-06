@@ -1,8 +1,6 @@
 THIRD-PARTY COMPONENTS DISTRIBUTED WITH VPN
 ===========================================
 
-(Versão em português: LICENCAS-TERCEIROS.txt)
-
 VPN itself is free software, licensed under the GNU General Public
 License version 3 or later (GPL-3.0-or-later) - full text in the LICENSE
 file. Source code: https://github.com/Antxj/vpn

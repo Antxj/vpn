@@ -1,4 +1,7 @@
-"""Gera os .ico do VPN (escudo com cadeado). Requer: pip install pillow
+"""Desenho do icone do VPN (escudo com cadeado). Requer: pip install pillow
+
+Gera os .ico na pasta atual. O app usa apenas o icone azul, copiado para
+rust/assets/icon.ico (os icones da bandeja sao os PNG de rust/assets).
 
 - icon.ico       azul    (icone do app/janela/exe)
 - icon_gray.ico  cinza   (bandeja: desconectado)

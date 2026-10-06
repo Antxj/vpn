@@ -119,8 +119,6 @@ the window.
 On the first run, Windows SmartScreen may warn about an "unrecognized app":
 click **More info** › **Run anyway**.
 
-Detailed instructions in [READ-ME.txt](READ-ME.txt) (Portuguese: [LEIA-ME.txt](LEIA-ME.txt)).
-
 ## For developers
 
 Requirements: [Rust](https://rustup.rs) (toolchain
