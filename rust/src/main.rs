@@ -44,6 +44,8 @@ const WINDOW_TITLE: &str = concat!("VPN v", env!("CARGO_PKG_VERSION"));
 const OPENVPN_DOWNLOAD_URL: &str = "https://openvpn.net/community-downloads/";
 
 const ACCENT: egui::Color32 = egui::Color32::from_rgb(0x3b, 0x82, 0xf6);
+/// Window size (fixed: the window is not resizable).
+const WINDOW_SIZE: [f32; 2] = [480.0, 660.0];
 const OPENVPN_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 static MAIN_WINDOW_VISIBLE: AtomicBool = AtomicBool::new(true);
@@ -552,6 +554,9 @@ fn apply_style(ctx: &egui::Context, dark: bool) {
     .into();
     style.spacing.item_spacing = egui::vec2(8.0, 8.0);
     style.spacing.button_padding = egui::vec2(14.0, 8.0);
+    // egui's default (500 px) is wider than the 480 px window: long tooltips
+    // were cut at the window edge
+    style.spacing.tooltip_width = 320.0;
     ctx.set_style(style);
 }
 
@@ -2264,7 +2269,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([480.0, 660.0])
+            .with_inner_size(WINDOW_SIZE)
             .with_resizable(false)
             .with_icon(std::sync::Arc::new(icon))
             .with_title(WINDOW_TITLE),
@@ -2338,6 +2343,18 @@ mod tests {
         assert_eq!(state::situacao_do_openvpn("RECONNECTING"), Situacao::Reconectando);
         assert_eq!(state::situacao_do_openvpn("EXITING"), Situacao::Desconectando);
         assert_eq!(state::situacao_do_openvpn("WAIT"), Situacao::Conectando);
+    }
+
+    /// Regression (v1.0.2): tooltips wider than the window were cut at its edge.
+    #[test]
+    fn tooltips_fit_inside_the_window() {
+        let ctx = egui::Context::default();
+        for dark in [true, false] {
+            apply_style(&ctx, dark);
+            let largura = ctx.style().spacing.tooltip_width;
+            // room for the tooltip frame and the window border
+            assert!(largura + 40.0 <= WINDOW_SIZE[0], "tooltip width {largura} does not fit");
+        }
     }
 
     #[test]
