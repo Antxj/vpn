@@ -381,7 +381,7 @@ fn baixar_e_trocar(
 /// Opens the new version (which waits for this process to end) and exits this
 /// one, disconnecting first. The new version turns the connected accounts back on.
 fn reabrir(alvo: &Path) -> std::io::Result<()> {
-    let m = crate::motor::get();
+    let m = crate::engine::get();
     let ligadas: Vec<String> = m
         .contas()
         .into_iter()

@@ -3,7 +3,7 @@
 //! %APPDATA%/VPN/contas.dat: a JSON encrypted with DPAPI in the user scope,
 //! with the preferences and the list of accounts.
 
-use crate::contas::Conta;
+use crate::accounts::Conta;
 use serde::{Deserialize, Serialize};
 use std::ffi::c_void;
 use std::path::PathBuf;
@@ -158,7 +158,7 @@ pub fn save_settings(settings: &Settings) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contas::Autenticacao;
+    use crate::accounts::Autenticacao;
 
     #[test]
     fn roundtrip_dpapi() {

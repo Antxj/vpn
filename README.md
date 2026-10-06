@@ -143,20 +143,20 @@ Structure:
 
 - [`main.rs`](rust/src/main.rs) — user interface (egui/WGPU with DirectX 12)
   and tray
-- [`motor.rs`](rust/src/motor.rs) — accounts and active connections (used by
+- [`engine.rs`](rust/src/engine.rs) — accounts and active connections (used by
   the interface and by the tray menu)
 - [`vpn.rs`](rust/src/vpn.rs) — one connection: `openvpn.exe` thread,
   management interface and on-demand adapter creation
-- [`estado.rs`](rust/src/estado.rs) — shared per-account state and log;
+- [`state.rs`](rust/src/state.rs) — shared per-account state and log;
   written by the connections, read by the interface and the tray
-- [`contas.rs`](rust/src/contas.rs) — account model, authentication and
+- [`accounts.rs`](rust/src/accounts.rs) — account model, authentication and
   validation
 - [`dpapi.rs`](rust/src/dpapi.rs) — encryption and persistence
-- [`rotas.rs`](rust/src/rotas.rs) — direct route to the server and tunnel
+- [`routes.rs`](rust/src/routes.rs) — direct route to the server and tunnel
   type detection (Windows IP Helper)
 - [`i18n.rs`](rust/src/i18n.rs) — language (Portuguese/English) and the
   `tr!`/`trf!` text macros
-- [`atualizacao.rs`](rust/src/atualizacao.rs) — checking for and installing
+- [`update.rs`](rust/src/update.rs) — checking for and installing
   new versions (WinHTTP, SHA-256 via BCrypt and signature via WinVerifyTrust)
 - [`totp.rs`](rust/src/totp.rs) (RFC 6238), [`qr.rs`](rust/src/qr.rs),
   [`installer.rs`](rust/src/installer.rs), [`single.rs`](rust/src/single.rs)
@@ -169,7 +169,7 @@ Useful variables for development and testing:
 | `VPN_OPENVPN` | points to an alternative `openvpn.exe` (non-existent = forces the notice) |
 | `VPN_INSTANCIA` | separates a test instance from the everyday app |
 | `VPN_SKIP_HINT` | does not show the first-time tray notification |
-| `VPN_CAPTURA` | documentation screenshots: hides the administrator notice; with `contas`, `editar`, `nova` or `atualizacao`, opens directly on that screen |
+| `VPN_CAPTURA` | documentation screenshots: hides the administrator notice; with `accounts`, `edit`, `new` or `update`, opens directly on that screen |
 | `VPN_IDIOMA` | forces `pt` or `en` (screenshots) |
 | `VPN_ATUALIZACAO_URL` | queries another address instead of the GitHub API (update tests) |
 | `APPDATA` | redirect to a test folder so the real accounts are not touched |

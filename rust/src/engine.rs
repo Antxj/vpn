@@ -2,9 +2,9 @@
 //! thread-safe because it is used both by the UI and by the tray menu (which
 //! works with the window hidden, when the egui loop does not run).
 
-use crate::contas::Conta;
+use crate::accounts::Conta;
 use crate::dpapi::{self, Settings};
-use crate::estado::{self, Situacao};
+use crate::state::{self, Situacao};
 use crate::vpn;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -147,7 +147,7 @@ impl Motor {
         s.contas.retain(|c| c.id != id);
         dpapi::save_settings(&s);
         drop(s);
-        estado::remover(id);
+        state::remover(id);
     }
 
     pub fn tema_escuro(&self) -> bool {
@@ -232,7 +232,7 @@ impl Motor {
             )));
         }
 
-        estado::log(conta.nome_exibicao(), tr!("Conectando...", "Connecting..."));
+        state::log(conta.nome_exibicao(), tr!("Conectando...", "Connecting..."));
         let ctrl = vpn::start(conta, openvpn);
         self.conexoes.lock().unwrap().insert(id.to_string(), ctrl);
         Ok(())
@@ -242,7 +242,7 @@ impl Motor {
         if let Some(c) = self.conexoes.lock().unwrap().get(id) {
             if !c.is_finished() {
                 c.request_stop();
-                estado::definir(id, Situacao::Desconectando, None);
+                state::definir(id, Situacao::Desconectando, None);
             }
         }
     }

@@ -255,7 +255,7 @@ mod tests {
     use super::*;
 
     fn id(n: &str) -> String {
-        format!("teste-estado-{n}-{}", crate::contas::novo_id())
+        format!("teste-estado-{n}-{}", crate::accounts::novo_id())
     }
 
     fn t() -> Option<Traffic> {

@@ -135,19 +135,19 @@ máquina.
 Estrutura:
 
 - [`main.rs`](rust/src/main.rs) — interface (egui/WGPU com DirectX 12) e bandeja
-- [`motor.rs`](rust/src/motor.rs) — contas e conexões ativas (usado pela
+- [`engine.rs`](rust/src/engine.rs) — contas e conexões ativas (usado pela
   interface e pelo menu da bandeja)
 - [`vpn.rs`](rust/src/vpn.rs) — uma conexão: thread do `openvpn.exe`, interface
   de gerenciamento e criação de adaptador sob demanda
-- [`estado.rs`](rust/src/estado.rs) — estado compartilhado por conta e log;
+- [`state.rs`](rust/src/state.rs) — estado compartilhado por conta e log;
   escrito pelas conexões, lido pela interface e pela bandeja
-- [`contas.rs`](rust/src/contas.rs) — modelo de conta, autenticação e validação
+- [`accounts.rs`](rust/src/accounts.rs) — modelo de conta, autenticação e validação
 - [`dpapi.rs`](rust/src/dpapi.rs) — criptografia e persistência
-- [`rotas.rs`](rust/src/rotas.rs) — rota direta até o servidor e detecção do
+- [`routes.rs`](rust/src/routes.rs) — rota direta até o servidor e detecção do
   tipo de túnel (IP Helper do Windows)
 - [`i18n.rs`](rust/src/i18n.rs) — idioma (português/inglês) e as macros
   `tr!`/`trf!` dos textos
-- [`atualizacao.rs`](rust/src/atualizacao.rs) — verificação e instalação de
+- [`update.rs`](rust/src/update.rs) — verificação e instalação de
   versões novas (WinHTTP, SHA-256 pelo BCrypt e assinatura pelo WinVerifyTrust)
 - [`totp.rs`](rust/src/totp.rs) (RFC 6238), [`qr.rs`](rust/src/qr.rs),
   [`installer.rs`](rust/src/installer.rs), [`single.rs`](rust/src/single.rs)
@@ -160,7 +160,7 @@ Variáveis úteis para desenvolvimento e testes:
 | `VPN_OPENVPN` | aponta um `openvpn.exe` alternativo (inexistente = força o aviso) |
 | `VPN_INSTANCIA` | separa uma instância de teste do app de uso diário |
 | `VPN_SKIP_HINT` | não mostra o aviso da primeira ida à bandeja |
-| `VPN_CAPTURA` | capturas de tela da documentação: esconde o aviso de administrador; com `contas`, `editar`, `nova` ou `atualizacao`, abre direto naquela tela |
+| `VPN_CAPTURA` | capturas de tela da documentação: esconde o aviso de administrador; com `accounts`, `edit`, `new` ou `update`, abre direto naquela tela |
 | `VPN_IDIOMA` | força `pt` ou `en` (capturas de tela) |
 | `VPN_ATUALIZACAO_URL` | consulta outro endereço no lugar da API do GitHub (testes da atualização) |
 | `APPDATA` | redirecione para uma pasta de teste para não tocar nas contas reais |

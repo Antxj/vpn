@@ -5,22 +5,22 @@
 // first: the tr!/trf! macros must be defined before the modules
 #[macro_use]
 mod i18n;
-mod atualizacao;
-mod contas;
+mod update;
+mod accounts;
 mod dpapi;
-mod estado;
+mod state;
 mod installer;
-mod motor;
+mod engine;
 mod qr;
-mod rotas;
+mod routes;
 mod single;
 mod totp;
 mod vpn;
 
-use contas::{Autenticacao, Conta};
+use accounts::{Autenticacao, Conta};
 use eframe::egui;
-use estado::{Agregado, Situacao};
-use motor::ErroConexao;
+use state::{Agregado, Situacao};
+use engine::ErroConexao;
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::fs::OpenOptions;
@@ -632,15 +632,15 @@ fn montar_menu(
 /// Account "on" for toggle/check purposes: connection in progress that is
 /// not being shut down.
 fn conta_ligada(id: &str) -> bool {
-    motor::get().ativa(id) && estado::obter(id).situacao != Situacao::Desconectando
+    engine::get().ativa(id) && state::obter(id).situacao != Situacao::Desconectando
 }
 
 /// Updates the tray icon, tooltip and menu from the shared state.
 /// Runs on the main thread: called by the App and by the Win32 timer (which
 /// works with the window hidden).
 fn apply_tray_state() {
-    let nomes = motor::get().nomes();
-    let versao_nova = atualizacao::disponivel();
+    let nomes = engine::get().nomes();
+    let versao_nova = update::disponivel();
     TRAY_UI.with(|cell| {
         let mut borrow = cell.borrow_mut();
         let Some(ui) = borrow.as_mut() else { return };
@@ -660,7 +660,7 @@ fn apply_tray_state() {
             }
         }
 
-        let (agregado, linhas) = estado::resumo(&nomes);
+        let (agregado, linhas) = state::resumo(&nomes);
         let icon_idx = match agregado {
             Agregado::Conectado => 2,
             Agregado::Transicao => 1,
@@ -739,7 +739,7 @@ fn create_tick_window() {
 /// Turns an account on or off. Used by the UI and by the tray menu.
 /// Asks for confirmation when two connections would fight over the default route.
 fn alternar_conta(id: &str) -> Result<(), ErroConexao> {
-    let m = motor::get();
+    let m = engine::get();
     if m.ativa(id) {
         m.desconectar(id);
         return Ok(());
@@ -790,11 +790,11 @@ fn install_tray_handlers() {
                     error_box(&e.mensagem());
                 }
             }
-            Some(AcaoMenu::DesconectarTodas) => motor::get().desconectar_todas(),
+            Some(AcaoMenu::DesconectarTodas) => engine::get().desconectar_todas(),
             Some(AcaoMenu::Sair) => {
                 // Exit for sure: disconnects (up to 15 s) and ends the process,
                 // without depending on the egui loop being awake.
-                std::thread::spawn(|| motor::get().encerrar());
+                std::thread::spawn(|| engine::get().encerrar());
             }
             None => {}
         }
@@ -814,7 +814,7 @@ fn install_tray_handlers() {
 /// Shows an error without blocking the caller (connection threads).
 pub fn error_box_async(msg: String) {
     if cfg!(test) {
-        estado::log("", msg); // no modal windows during tests
+        state::log("", msg); // no modal windows during tests
         return;
     }
     std::thread::spawn(move || error_box(&msg));
@@ -923,12 +923,12 @@ struct App {
 
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let m = motor::get();
+        let m = engine::get();
         let dark = m.tema_escuro();
         apply_style(&cc.egui_ctx, dark);
         let _ = EGUI_CTX.set(cc.egui_ctx.clone());
         let ctx = cc.egui_ctx.clone();
-        estado::ao_mudar(move || ctx.request_repaint());
+        state::ao_mudar(move || ctx.request_repaint());
 
         single::spawn_show_listener();
 
@@ -965,9 +965,9 @@ impl App {
         let (install_tx, install_rx) = std::sync::mpsc::channel();
         // VPN_CAPTURA: only for the documentation screenshots, taken with the
         // development build (which deliberately runs without elevation)
-        let admin = motor::eh_administrador() || std::env::var_os("VPN_CAPTURA").is_some();
+        let admin = engine::eh_administrador() || std::env::var_os("VPN_CAPTURA").is_some();
         if !admin {
-            estado::log(
+            state::log(
                 "",
                 tr!(
                     "Atenção: o aplicativo não está como administrador.",
@@ -976,12 +976,12 @@ impl App {
             );
         }
         if APOS_ATUALIZAR.load(Ordering::SeqCst) {
-            estado::log(
+            state::log(
                 "",
                 trf!(
                     "Aplicativo atualizado para a versão {}.",
                     "App updated to version {}.",
-                    atualizacao::VERSAO_ATUAL
+                    update::VERSAO_ATUAL
                 ),
             );
         }
@@ -989,15 +989,15 @@ impl App {
         for id in RECONECTAR.get().into_iter().flatten() {
             if let Err(e) = m.conectar(id, find_openvpn()) {
                 let nome = m.conta(id).map(|c| c.nome_exibicao().to_string()).unwrap_or_default();
-                estado::log(
+                state::log(
                     &nome,
                     trf!("Não reconectou: {}", "Did not reconnect: {}", e.mensagem()),
                 );
             }
         }
         let ctx = cc.egui_ctx.clone();
-        atualizacao::ao_mudar(move || ctx.request_repaint());
-        atualizacao::iniciar_verificacao_periodica(|| motor::get().verifica_atualizacoes());
+        update::ao_mudar(move || ctx.request_repaint());
+        update::iniciar_verificacao_periodica(|| engine::get().verifica_atualizacoes());
 
         let mut app = Self {
             dark,
@@ -1013,17 +1013,17 @@ impl App {
             install_rx,
             install_tx,
         };
-        // VPN_CAPTURA=contas|editar|nova opens straight on that screen (documentation
+        // VPN_CAPTURA=accounts|edit|new opens straight on that screen (documentation
         // screenshots and visual check of each screen)
         match std::env::var("VPN_CAPTURA").as_deref() {
-            Ok("contas") => app.tela = Tela::Contas,
-            Ok("editar") => {
+            Ok("accounts") => app.tela = Tela::Contas,
+            Ok("edit") => {
                 if let Some(c) = m.contas().into_iter().next() {
                     app.abrir_editor(c, false);
                 }
             }
-            Ok("nova") => app.abrir_editor(Conta::nova(), true),
-            Ok("atualizacao") => app.janela_atualizacao = true,
+            Ok("new") => app.abrir_editor(Conta::nova(), true),
+            Ok("update") => app.janela_atualizacao = true,
             _ => {}
         }
         app
@@ -1035,7 +1035,7 @@ impl App {
             return;
         }
         self.installing = true;
-        estado::log(
+        state::log(
             "",
             trf!(
                 "Instalando o OpenVPN Community {}... (pode levar cerca de um minuto)",
@@ -1106,7 +1106,7 @@ impl App {
                     self.last_ovpn_check = Instant::now();
                     match result {
                         Ok(_) if self.openvpn_missing => {
-                            estado::log(
+                            state::log(
                                 "",
                                 tr!(
                                     "Instalação concluída, mas o OpenVPN não foi encontrado.",
@@ -1122,7 +1122,7 @@ impl App {
                             ));
                         }
                         Ok(reiniciar) => {
-                            estado::log(
+                            state::log(
                                 "",
                                 tr!(
                                     "OpenVPN Community instalado com sucesso.",
@@ -1130,7 +1130,7 @@ impl App {
                                 ),
                             );
                             if reiniciar {
-                                estado::log(
+                                state::log(
                                     "",
                                     tr!(
                                         "O Windows pediu reinicialização; se a conexão falhar, reinicie.",
@@ -1140,7 +1140,7 @@ impl App {
                             }
                         }
                         Err(msg) => {
-                            estado::log("", trf!("Falha na instalação: {msg}", "Installation failed: {msg}"));
+                            state::log("", trf!("Falha na instalação: {msg}", "Installation failed: {msg}"));
                             show_main_window();
                             error_box(&trf!(
                                 "Não foi possível instalar o OpenVPN.\n\n{msg}",
@@ -1318,7 +1318,7 @@ impl App {
     }
 
     fn tela_inicio(&mut self, ui: &mut egui::Ui) {
-        let m = motor::get();
+        let m = engine::get();
         let contas = m.contas();
 
         if contas.is_empty() {
@@ -1366,7 +1366,7 @@ impl App {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for conta in &contas {
-                    let e = estado::obter(&conta.id);
+                    let e = state::obter(&conta.id);
                     let ligada = conta_ligada(&conta.id);
                     egui::Frame::none()
                         .fill(fundo_cartao)
@@ -1489,7 +1489,7 @@ impl App {
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
-                        let linhas = estado::log_linhas();
+                        let linhas = state::log_linhas();
                         if linhas.is_empty() {
                             ui.label(
                                 egui::RichText::new(tr!(
@@ -1523,7 +1523,7 @@ impl App {
             self.tela_editor(ui);
             return;
         }
-        let m = motor::get();
+        let m = engine::get();
         let contas = m.contas();
         let fundo_cartao = if self.dark {
             egui::Color32::from_rgb(0x26, 0x29, 0x31)
@@ -1642,7 +1642,7 @@ impl App {
             }
             if ui.button(tr!("Voltar", "Back")).clicked() {
                 self.tela = Tela::Inicio;
-                atualizacao::limpar_resultado();
+                update::limpar_resultado();
             }
         });
         self.rodape_atualizacao(ui);
@@ -1669,9 +1669,9 @@ impl App {
 
     /// Language, version and updates: unobtrusive, at the bottom of the accounts screen.
     fn rodape_atualizacao(&mut self, ui: &mut egui::Ui) {
-        use atualizacao::Estado;
+        use update::Estado;
         use i18n::Idioma;
-        let m = motor::get();
+        let m = engine::get();
         let fraco = label_color(self.dark);
         let pequeno = |t: &str| egui::RichText::new(t).small().color(fraco);
         ui.add_space(10.0);
@@ -1716,8 +1716,8 @@ impl App {
             m.salvar_verifica_atualizacoes(auto);
         }
         ui.horizontal(|ui| {
-            ui.label(pequeno(&trf!("Versão {}", "Version {}", atualizacao::VERSAO_ATUAL)));
-            let estado = atualizacao::estado();
+            ui.label(pequeno(&trf!("Versão {}", "Version {}", update::VERSAO_ATUAL)));
+            let estado = update::estado();
             match &estado {
                 Estado::Verificando => {
                     ui.spinner();
@@ -1734,7 +1734,7 @@ impl App {
                 }
                 Estado::Nada => {}
                 _ => {
-                    if let Some(v) = atualizacao::disponivel() {
+                    if let Some(v) = update::disponivel() {
                         let texto = egui::RichText::new(trf!(
                             "·  versão {v} disponível",
                             "·  version {v} available"
@@ -1752,20 +1752,20 @@ impl App {
                     .link(egui::RichText::new(tr!("Procurar agora", "Check now")).small())
                     .clicked()
             {
-                atualizacao::verificar_agora();
+                update::verificar_agora();
             }
         });
     }
 
     fn janela_atualizacao(&mut self, ctx: &egui::Context) {
-        use atualizacao::Estado;
-        let estado = atualizacao::estado();
+        use update::Estado;
+        let estado = update::estado();
         let versao = match &estado {
             Estado::Disponivel(v)
             | Estado::Baixando(v, _)
             | Estado::FalhaInstalacao(v, _)
             | Estado::Reiniciando(v) => v.clone(),
-            // VPN_CAPTURA=atualizacao opens before the check finishes
+            // VPN_CAPTURA=update opens before the check finishes
             _ => return,
         };
         let dark = self.dark;
@@ -1798,7 +1798,7 @@ impl App {
                         egui::RichText::new(trf!(
                             "Você usa a versão {}.",
                             "You are using version {}.",
-                            atualizacao::VERSAO_ATUAL
+                            update::VERSAO_ATUAL
                         ))
                         .color(label_color(dark)),
                     );
@@ -1870,7 +1870,7 @@ impl App {
             }
         });
         if instalar {
-            atualizacao::instalar(versao);
+            update::instalar(versao);
         }
         if fechar || !aberta {
             self.janela_atualizacao = false;
@@ -2061,8 +2061,8 @@ impl App {
                     } else {
                         tr!("Conta atualizada.", "Account updated.")
                     };
-                    estado::log(c.nome_exibicao(), msg);
-                    motor::get().salvar_conta(c);
+                    state::log(c.nome_exibicao(), msg);
+                    engine::get().salvar_conta(c);
                     self.editor = None;
                     self.qr_open = false;
                     apply_tray_state();
@@ -2166,7 +2166,7 @@ impl eframe::App for App {
                         {
                             self.dark = !self.dark;
                             apply_style(ctx, self.dark);
-                            motor::get().salvar_tema(self.dark);
+                            engine::get().salvar_tema(self.dark);
                         }
                         if self.tela == Tela::Inicio {
                             let b = egui::Button::new(tr!("Contas", "Accounts"))
@@ -2177,7 +2177,7 @@ impl eframe::App for App {
                             }
                         }
                         // new version: just an unobtrusive link in the header
-                        if let Some(v) = atualizacao::disponivel() {
+                        if let Some(v) = update::disponivel() {
                             let texto = egui::RichText::new(trf!(
                                 "Versão {v} disponível",
                                 "Version {v} available"
@@ -2235,12 +2235,12 @@ fn main() -> eframe::Result<()> {
             .and_then(|i| args.get(i + 1))
             .cloned()
     };
-    if let Some(pid) = valor(atualizacao::ARG_APOS_ATUALIZAR).and_then(|p| p.parse().ok()) {
+    if let Some(pid) = valor(update::ARG_APOS_ATUALIZAR).and_then(|p| p.parse().ok()) {
         // the previous one is still disconnecting the VPNs (up to 15 s) and holds the instance
-        atualizacao::aguardar_processo(pid, Duration::from_secs(30));
+        update::aguardar_processo(pid, Duration::from_secs(30));
         APOS_ATUALIZAR.store(true, Ordering::SeqCst);
     }
-    if let Some(ids) = valor(atualizacao::ARG_RECONECTAR) {
+    if let Some(ids) = valor(update::ARG_RECONECTAR) {
         let _ = RECONECTAR.set(
             ids.split(',')
                 .filter(|s| !s.is_empty())
@@ -2252,8 +2252,8 @@ fn main() -> eframe::Result<()> {
     if !single::acquire_or_signal() {
         return Ok(()); // another instance is already running and was notified
     }
-    atualizacao::limpar_restos();
-    i18n::aplicar(motor::get().idioma());
+    update::limpar_restos();
+    i18n::aplicar(engine::get().idioma());
 
     let (rgba, w, h) = load_icon_rgba(include_bytes!("../assets/app_64.png"));
     let icon = egui::IconData {
@@ -2334,10 +2334,10 @@ mod tests {
 
     #[test]
     fn mapeamento_de_estado_do_openvpn() {
-        assert_eq!(estado::situacao_do_openvpn("CONNECTED"), Situacao::Conectado);
-        assert_eq!(estado::situacao_do_openvpn("RECONNECTING"), Situacao::Reconectando);
-        assert_eq!(estado::situacao_do_openvpn("EXITING"), Situacao::Desconectando);
-        assert_eq!(estado::situacao_do_openvpn("WAIT"), Situacao::Conectando);
+        assert_eq!(state::situacao_do_openvpn("CONNECTED"), Situacao::Conectado);
+        assert_eq!(state::situacao_do_openvpn("RECONNECTING"), Situacao::Reconectando);
+        assert_eq!(state::situacao_do_openvpn("EXITING"), Situacao::Desconectando);
+        assert_eq!(state::situacao_do_openvpn("WAIT"), Situacao::Conectando);
     }
 
     #[test]
