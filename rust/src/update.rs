@@ -109,9 +109,9 @@ pub fn pagina_releases() -> String {
     format!("https://github.com/{REPOSITORIO}/releases")
 }
 
-/// VPN_ATUALIZACAO_URL changes the queried address (tests only).
+/// VPN_UPDATE_URL changes the queried address (tests only).
 fn url_api() -> String {
-    std::env::var("VPN_ATUALIZACAO_URL")
+    std::env::var("VPN_UPDATE_URL")
         .unwrap_or_else(|_| format!("https://api.github.com/repos/{REPOSITORIO}/releases/latest"))
 }
 

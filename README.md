@@ -23,17 +23,17 @@ the Windows language (it can be set under **Accounts** › Language).
 
 | Dark theme | Light theme |
 |---|---|
-| ![Dark theme](docs/en/inicio_escuro.png) | ![Light theme](docs/en/inicio_claro.png) |
+| ![Dark theme](docs/en/home_dark.png) | ![Light theme](docs/en/home_light.png) |
 
 | Accounts | Edit account |
 |---|---|
-| ![Account list](docs/en/contas.png) | ![Account editor](docs/en/editor.png) |
+| ![Account list](docs/en/accounts.png) | ![Account editor](docs/en/editor.png) |
 
 If OpenVPN Community is not installed, the app shows a notice and installs it
 silently from the embedded official installer (the check runs every 5
 seconds — as soon as OpenVPN is found, the notice goes away):
 
-![OpenVPN missing notice](docs/en/aviso_openvpn.png)
+![OpenVPN missing notice](docs/en/openvpn_missing.png)
 
 ## How it works
 
@@ -167,11 +167,11 @@ Useful variables for development and testing:
 |---|---|
 | `VPN_DEV_NOUAC=1` (at build time) | builds an executable that does not request UAC |
 | `VPN_OPENVPN` | points to an alternative `openvpn.exe` (non-existent = forces the notice) |
-| `VPN_INSTANCIA` | separates a test instance from the everyday app |
+| `VPN_INSTANCE` | separates a test instance from the everyday app |
 | `VPN_SKIP_HINT` | does not show the first-time tray notification |
-| `VPN_CAPTURA` | documentation screenshots: hides the administrator notice; with `accounts`, `edit`, `new` or `update`, opens directly on that screen |
-| `VPN_IDIOMA` | forces `pt` or `en` (screenshots) |
-| `VPN_ATUALIZACAO_URL` | queries another address instead of the GitHub API (update tests) |
+| `VPN_SCREENSHOT` | documentation screenshots: hides the administrator notice; with `accounts`, `edit`, `new` or `update`, opens directly on that screen |
+| `VPN_LANGUAGE` | forces `pt` or `en` (screenshots) |
+| `VPN_UPDATE_URL` | queries another address instead of the GitHub API (update tests) |
 | `APPDATA` | redirect to a test folder so the real accounts are not touched |
 
 ## Updates
@@ -187,7 +187,7 @@ Nothing opens by itself: when there is a new version, only the blue
 "Version X available" link appears at the top of the window (plus an item in
 the tray menu). The window below only opens when the user clicks it:
 
-![Update available](docs/en/atualizacao.png)
+![Update available](docs/en/update.png)
 
 When the user clicks **Update now**:
 

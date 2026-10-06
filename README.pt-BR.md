@@ -20,17 +20,17 @@ instalador oficial do OpenVPN dentro — não é preciso instalar nada antes.
 
 | Tema escuro | Tema claro |
 |---|---|
-| ![Tema escuro](docs/inicio_escuro.png) | ![Tema claro](docs/inicio_claro.png) |
+| ![Tema escuro](docs/pt-BR/home_dark.png) | ![Tema claro](docs/pt-BR/home_light.png) |
 
 | Contas | Editar conta |
 |---|---|
-| ![Lista de contas](docs/contas.png) | ![Editor de conta](docs/editor.png) |
+| ![Lista de contas](docs/pt-BR/accounts.png) | ![Editor de conta](docs/pt-BR/editor.png) |
 
 Se o OpenVPN Community não estiver instalado, o app avisa e instala sozinho,
 em silêncio, a partir do instalador oficial embutido (a verificação roda a
 cada 5 segundos — assim que o OpenVPN aparece, o aviso some):
 
-![Aviso de OpenVPN ausente](docs/aviso_openvpn.png)
+![Aviso de OpenVPN ausente](docs/pt-BR/openvpn_missing.png)
 
 ## Como funciona
 
@@ -158,11 +158,11 @@ Variáveis úteis para desenvolvimento e testes:
 |---|---|
 | `VPN_DEV_NOUAC=1` (no build) | gera um executável que não pede UAC |
 | `VPN_OPENVPN` | aponta um `openvpn.exe` alternativo (inexistente = força o aviso) |
-| `VPN_INSTANCIA` | separa uma instância de teste do app de uso diário |
+| `VPN_INSTANCE` | separa uma instância de teste do app de uso diário |
 | `VPN_SKIP_HINT` | não mostra o aviso da primeira ida à bandeja |
-| `VPN_CAPTURA` | capturas de tela da documentação: esconde o aviso de administrador; com `accounts`, `edit`, `new` ou `update`, abre direto naquela tela |
-| `VPN_IDIOMA` | força `pt` ou `en` (capturas de tela) |
-| `VPN_ATUALIZACAO_URL` | consulta outro endereço no lugar da API do GitHub (testes da atualização) |
+| `VPN_SCREENSHOT` | capturas de tela da documentação: esconde o aviso de administrador; com `accounts`, `edit`, `new` ou `update`, abre direto naquela tela |
+| `VPN_LANGUAGE` | força `pt` ou `en` (capturas de tela) |
+| `VPN_UPDATE_URL` | consulta outro endereço no lugar da API do GitHub (testes da atualização) |
 | `APPDATA` | redirecione para uma pasta de teste para não tocar nas contas reais |
 
 ## Atualizações
@@ -178,7 +178,7 @@ Nada abre sozinho: havendo versão nova, aparece apenas o link azul
 "Versão X disponível" no topo da janela (e um item no menu da bandeja). A
 janela abaixo só abre quando o usuário clica nele:
 
-![Atualização disponível](docs/atualizacao.png)
+![Atualização disponível](docs/pt-BR/update.png)
 
 Ao clicar em **Atualizar agora**:
 

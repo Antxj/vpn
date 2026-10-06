@@ -31,10 +31,10 @@ pub fn wide(s: &str) -> Vec<u16> {
 const MUTEX_NAME: &str = "Local\\vpn-rs-instancia-unica";
 const EVENT_NAME: &str = "Local\\vpn-rs-mostrar";
 
-/// Windows object name. VPN_INSTANCIA (tests only) separates a test
+/// Windows object name. VPN_INSTANCE (tests only) separates a test
 /// instance from the everyday app open in the same session.
 fn nome(base: &str) -> Vec<u16> {
-    match std::env::var("VPN_INSTANCIA") {
+    match std::env::var("VPN_INSTANCE") {
         Ok(sufixo) if !sufixo.is_empty() => wide(&format!("{base}-{sufixo}")),
         _ => wide(base),
     }

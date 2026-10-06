@@ -963,9 +963,9 @@ impl App {
         create_tick_window();
 
         let (install_tx, install_rx) = std::sync::mpsc::channel();
-        // VPN_CAPTURA: only for the documentation screenshots, taken with the
+        // VPN_SCREENSHOT: only for the documentation screenshots, taken with the
         // development build (which deliberately runs without elevation)
-        let admin = engine::eh_administrador() || std::env::var_os("VPN_CAPTURA").is_some();
+        let admin = engine::eh_administrador() || std::env::var_os("VPN_SCREENSHOT").is_some();
         if !admin {
             state::log(
                 "",
@@ -1013,9 +1013,9 @@ impl App {
             install_rx,
             install_tx,
         };
-        // VPN_CAPTURA=accounts|edit|new opens straight on that screen (documentation
+        // VPN_SCREENSHOT=accounts|edit|new opens straight on that screen (documentation
         // screenshots and visual check of each screen)
-        match std::env::var("VPN_CAPTURA").as_deref() {
+        match std::env::var("VPN_SCREENSHOT").as_deref() {
             Ok("accounts") => app.tela = Tela::Contas,
             Ok("edit") => {
                 if let Some(c) = m.contas().into_iter().next() {
@@ -1765,7 +1765,7 @@ impl App {
             | Estado::Baixando(v, _)
             | Estado::FalhaInstalacao(v, _)
             | Estado::Reiniciando(v) => v.clone(),
-            // VPN_CAPTURA=update opens before the check finishes
+            // VPN_SCREENSHOT=update opens before the check finishes
             _ => return,
         };
         let dark = self.dark;

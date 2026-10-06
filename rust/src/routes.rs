@@ -329,13 +329,13 @@ mod tests {
     }
 
     /// Classifies a really connected VPN (only reads the routing table):
-    /// VPN_TESTE_IP=<adapter ip> VPN_TESTE_COMPLETO=yes|no \
+    /// VPN_TEST_IP=<adapter ip> VPN_TEST_FULL=yes|no \
     /// cargo test -- --ignored vpn_real
     #[test]
     #[ignore]
     fn classifica_uma_vpn_real() {
-        let ip = std::env::var("VPN_TESTE_IP").expect("set VPN_TESTE_IP");
-        let esperado = std::env::var("VPN_TESTE_COMPLETO").expect("set VPN_TESTE_COMPLETO") == "yes";
+        let ip = std::env::var("VPN_TEST_IP").expect("set VPN_TEST_IP");
+        let esperado = std::env::var("VPN_TEST_FULL").expect("set VPN_TEST_FULL") == "yes";
         assert_eq!(tunel_completo(&ip), Some(esperado));
     }
 
