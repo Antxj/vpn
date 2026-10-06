@@ -1,12 +1,12 @@
-"""Desenho do icone do VPN (escudo com cadeado). Requer: pip install pillow
+"""VPN icon design (shield with a padlock). Requires: pip install pillow
 
-Gera os .ico na pasta atual. O app usa apenas o icone azul, copiado para
-rust/assets/icon.ico (os icones da bandeja sao os PNG de rust/assets).
+Writes the .ico files to the current folder. The app only uses the blue icon,
+copied to rust/assets/icon.ico (the tray icons are the PNGs in rust/assets).
 
-- icon.ico       azul    (icone do app/janela/exe)
-- icon_gray.ico  cinza   (bandeja: desconectado)
-- icon_warn.ico  ambar   (bandeja: conectando/reconectando)
-- icon_ok.ico    verde   (bandeja: conectado)
+- icon.ico       blue    (app/window/exe icon)
+- icon_gray.ico  gray    (tray: disconnected)
+- icon_warn.ico  amber   (tray: connecting/reconnecting)
+- icon_ok.ico    green   (tray: connected)
 """
 from PIL import Image, ImageDraw
 
@@ -20,7 +20,7 @@ VARIANTS = {
 
 
 def draw_icon(size: int, accent, accent_dark) -> Image.Image:
-    scale = 4  # desenha grande e reduz (anti-aliasing)
+    scale = 4  # draw large and scale down (anti-aliasing)
     s = size * scale
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
@@ -28,7 +28,7 @@ def draw_icon(size: int, accent, accent_dark) -> Image.Image:
     def p(x: float, y: float) -> tuple[float, float]:
         return x * s, y * s
 
-    # fundo arredondado com leve gradiente vertical
+    # rounded background with a slight vertical gradient
     for i in range(s):
         t = i / s
         r = int(accent[0] + (accent_dark[0] - accent[0]) * t)
@@ -41,13 +41,13 @@ def draw_icon(size: int, accent, accent_dark) -> Image.Image:
     img.putalpha(mask)
     d = ImageDraw.Draw(img)
 
-    # escudo branco
+    # white shield
     shield = [p(0.50, 0.13), p(0.79, 0.245), p(0.79, 0.52),
               p(0.71, 0.70), p(0.50, 0.87), p(0.29, 0.70), p(0.21, 0.52),
               p(0.21, 0.245)]
     d.polygon(shield, fill=WHITE)
 
-    # cadeado (na cor do fundo) dentro do escudo
+    # padlock (in the background color) inside the shield
     d.arc([p(0.40, 0.28)[0], p(0.40, 0.28)[1], p(0.60, 0.48)[0], p(0.60, 0.48)[1]],
           start=180, end=360, fill=accent_dark, width=int(s * 0.045))
     d.rounded_rectangle([p(0.355, 0.40)[0], p(0.355, 0.40)[1],
@@ -68,4 +68,4 @@ if __name__ == "__main__":
         images[-1].save(name, format="ICO",
                         sizes=[(s, s) for s in sizes],
                         append_images=images[:-1])
-        print(f"{name} gerado.")
+        print(f"{name} generated.")

@@ -30,9 +30,9 @@ $remapFlags = @(
 $env:CARGO_ENCODED_RUSTFLAGS = $remapFlags -join $separator
 Remove-Item Env:VPN_DEV_NOUAC -ErrorAction SilentlyContinue
 
-# --- instalador oficial do OpenVPN embutido no executavel -------------------
-# O MSI nao fica no repositorio: e baixado do servidor oficial e conferido
-# por SHA-256 (e pela assinatura Authenticode) antes de entrar no binario.
+# --- official OpenVPN installer embedded in the executable -----------------
+# The MSI is not in the repository: it is downloaded from the official server
+# and verified by SHA-256 (and by its Authenticode signature) before going in.
 $msiVersao = "2.7.6-I001"
 $msiUrl = "https://build.openvpn.net/downloads/releases/OpenVPN-$msiVersao-amd64.msi"
 $msiSha256 = "48C96AC092A81C6303F059EACE51C7BF878794E9575B329E82894848E0E529FC"
@@ -40,37 +40,37 @@ $msiPath = Join-Path $crateRoot "assets\openvpn.msi"
 
 if (-not (Test-Path $msiPath) -or
     (Get-FileHash -Algorithm SHA256 $msiPath).Hash -ne $msiSha256) {
-    Write-Host "Baixando o instalador oficial do OpenVPN ($msiVersao)..."
+    Write-Host "Downloading the official OpenVPN installer ($msiVersao)..."
     $ProgressPreference = "SilentlyContinue"
     Invoke-WebRequest -Uri $msiUrl -OutFile $msiPath -UseBasicParsing -TimeoutSec 300
 }
 
 $hashBaixado = (Get-FileHash -Algorithm SHA256 $msiPath).Hash
 if ($hashBaixado -ne $msiSha256) {
-    throw "SHA-256 do MSI nao confere (esperado $msiSha256, obtido $hashBaixado)."
+    throw "MSI SHA-256 does not match (expected $msiSha256, got $hashBaixado)."
 }
 $assinatura = Get-AuthenticodeSignature $msiPath
 if ($assinatura.Status -ne "Valid" -or
     $assinatura.SignerCertificate.Subject -notmatch "OpenVPN") {
-    throw "Assinatura do MSI invalida ou de outro fornecedor: $($assinatura.Status)"
+    throw "Invalid MSI signature or a different publisher: $($assinatura.Status)"
 }
-Write-Host "MSI do OpenVPN verificado (SHA-256 e assinatura da OpenVPN Inc.)."
+Write-Host "OpenVPN MSI verified (SHA-256 and OpenVPN Inc. signature)."
 
 Push-Location $crateRoot
 try {
     cargo test --locked
     if ($LASTEXITCODE -ne 0) {
-        throw "Os testes falharam. O release nao foi gerado."
+        throw "The tests failed. The release was not built."
     }
 
     cargo clean --release
     if ($LASTEXITCODE -ne 0) {
-        throw "Nao foi possivel limpar artefatos antigos de release."
+        throw "Could not clean old release artifacts."
     }
 
     cargo build --release --locked
     if ($LASTEXITCODE -ne 0) {
-        throw "A compilacao de release falhou."
+        throw "The release build failed."
     }
 
     $binary = Join-Path $targetRoot "release\vpn.exe"
@@ -85,18 +85,18 @@ try {
         $comparison = [StringComparison]::OrdinalIgnoreCase
         if ($singleByteText.IndexOf($value, $comparison) -ge 0 -or
             $utf16Text.IndexOf($value, $comparison) -ge 0) {
-            throw "O executavel contem informacao local de build: $value"
+            throw "The executable contains local build information: $value"
         }
     }
 
     $tamanhoMsi = (Get-Item $msiPath).Length
     if ((Get-Item $binary).Length -lt $tamanhoMsi) {
-        throw "O executavel saiu menor que o MSI: o instalador nao foi embutido."
+        throw "The executable is smaller than the MSI: the installer was not embedded."
     }
 
     $hash = (Get-FileHash -Algorithm SHA256 $binary).Hash
-    Write-Host "Release verificado: $binary"
-    Write-Host "Instalador do OpenVPN embutido: $msiVersao"
+    Write-Host "Release verified: $binary"
+    Write-Host "Embedded OpenVPN installer: $msiVersao"
     Write-Host "SHA256: $hash"
 } finally {
     Pop-Location

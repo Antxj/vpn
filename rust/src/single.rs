@@ -1,4 +1,4 @@
-//! Instancia unica: mutex nomeado + evento nomeado para "mostre-se".
+//! Single instance: named mutex + named event for "show yourself".
 
 use std::ffi::c_void;
 use std::ptr;
@@ -26,13 +26,13 @@ pub fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-// Duas instancias disputariam adaptadores e rotas: a segunda so pede para
-// a primeira aparecer e sai.
+// Two instances would fight over adapters and routes: the second one only
+// asks the first one to show up and exits.
 const MUTEX_NAME: &str = "Local\\vpn-rs-instancia-unica";
 const EVENT_NAME: &str = "Local\\vpn-rs-mostrar";
 
-/// Nome do objeto do Windows. VPN_INSTANCIA (so para testes) separa uma
-/// instancia de teste do app de uso diario aberto na mesma sessao.
+/// Windows object name. VPN_INSTANCIA (tests only) separates a test
+/// instance from the everyday app open in the same session.
 fn nome(base: &str) -> Vec<u16> {
     match std::env::var("VPN_INSTANCIA") {
         Ok(sufixo) if !sufixo.is_empty() => wide(&format!("{base}-{sufixo}")),
@@ -40,13 +40,13 @@ fn nome(base: &str) -> Vec<u16> {
     }
 }
 
-/// Retorna true se esta e a primeira instancia (e mantem o mutex vivo pelo
-/// resto do processo). Se ja houver outra, sinaliza-a e retorna false.
+/// Returns true if this is the first instance (and keeps the mutex alive for
+/// the rest of the process). If another one exists, signals it and returns false.
 pub fn acquire_or_signal() -> bool {
     let name = nome(MUTEX_NAME);
     let handle = unsafe { CreateMutexW(ptr::null_mut(), 0, name.as_ptr()) };
     let already = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
-    // handle intencionalmente "vazado": vive ate o fim do processo
+    // handle intentionally "leaked": lives until the process ends
     let _ = handle;
     if !already {
         return true;
@@ -59,9 +59,9 @@ pub fn acquire_or_signal() -> bool {
     false
 }
 
-/// Cria o evento "mostre-se" e uma thread que restaura a janela principal
-/// (direto pela API do Windows - funciona mesmo com a UI oculta/pausada)
-/// sempre que uma segunda instancia sinalizar.
+/// Creates the "show yourself" event and a thread that restores the main window
+/// (straight through the Windows API - works even with the UI hidden/paused)
+/// whenever a second instance signals.
 pub fn spawn_show_listener() {
     let ev_name = nome(EVENT_NAME);
     let ev = unsafe { CreateEventW(ptr::null_mut(), 0, 0, ev_name.as_ptr()) } as usize;

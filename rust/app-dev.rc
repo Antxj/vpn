@@ -1,5 +1,5 @@
-// Variante de desenvolvimento: igual ao app.rc, mas sem exigir admin
-// (para rodar/fotografar a interface sem UAC). Nao usar em release.
+// Development variant: same as app.rc, but without requiring admin
+// (to run/screenshot the UI without UAC). Do not use for releases.
 
 1 ICON "assets/icon.ico"
 1 24 "assets/app-dev.manifest"

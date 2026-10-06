@@ -1,21 +1,21 @@
-//! Atualizacoes pelas Releases do GitHub, sem servidor proprio.
+//! Updates through GitHub Releases, with no server of our own.
 //!
-//! - Verificacao discreta: 30 s depois de abrir e depois uma vez por dia, o
-//!   app consulta `releases/latest` na API publica do GitHub (que ignora
-//!   pre-lancamentos). Falhas sao silenciosas. Nada e enviado alem do
-//!   pedido em si (o GitHub ve o IP e a versao no User-Agent).
-//! - "Atualizar agora": baixa o VPN.exe da versao, confere e troca o
-//!   executavel, reabre o app e reconecta as VPNs que estavam ligadas.
+//! - Unobtrusive check: 30 s after opening and then once a day, the app
+//!   queries `releases/latest` on the public GitHub API (which ignores
+//!   pre-releases). Failures are silent. Nothing is sent besides the
+//!   request itself (GitHub sees the IP and the version in the User-Agent).
+//! - "Update now": downloads the release VPN.exe, verifies and replaces the
+//!   executable, reopens the app and reconnects the VPNs that were on.
 //!
-//! Seguranca da troca:
-//! - o arquivo baixado precisa ter exatamente o SHA-256 que o GitHub publica
-//!   para ele (campo `digest` do anexo);
-//! - se o executavel atual e assinado (Authenticode), o novo precisa ter
-//!   assinatura valida DO MESMO editor. A partir da primeira versao
-//!   assinada, uma versao sem assinatura nunca e instalada.
+//! Replacement safety:
+//! - the downloaded file must have exactly the SHA-256 that GitHub publishes
+//!   for it (the asset `digest` field);
+//! - if the current executable is signed (Authenticode), the new one must
+//!   have a valid signature FROM THE SAME publisher. From the first signed
+//!   version on, an unsigned version is never installed.
 //!
-//! Tudo pelas APIs do proprio Windows (WinHTTP, BCrypt, WinVerifyTrust):
-//! nenhuma dependencia nova, e o WinHTTP respeita o proxy do sistema.
+//! Everything through Windows' own APIs (WinHTTP, BCrypt, WinVerifyTrust):
+//! no new dependency, and WinHTTP honors the system proxy.
 
 use std::ffi::c_void;
 use std::path::{Path, PathBuf};
@@ -25,28 +25,28 @@ use std::time::Duration;
 
 pub const REPOSITORIO: &str = "Antxj/vpn";
 pub const VERSAO_ATUAL: &str = env!("CARGO_PKG_VERSION");
-/// Nome do anexo da release que contem o aplicativo.
+/// Name of the release asset that contains the app.
 const ARQUIVO: &str = "VPN.exe";
 const PRIMEIRA_VERIFICACAO: Duration = Duration::from_secs(30);
 const INTERVALO: Duration = Duration::from_secs(24 * 60 * 60);
 const LIMITE_JSON: usize = 2 * 1024 * 1024;
 const LIMITE_EXE: usize = 64 * 1024 * 1024;
 
-/// Uma versao publicada, mais nova que a atual.
+/// A published version, newer than the current one.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Versao {
     pub numero: String,
-    /// Pagina da release (novidades).
+    /// Release page (what's new).
     pub pagina: String,
-    /// Link do VPN.exe; vazio se a release nao tem o anexo.
+    /// VPN.exe link; empty if the release does not have the asset.
     pub download: String,
     pub tamanho: u64,
-    /// SHA-256 publicado pelo GitHub (hex minusculo).
+    /// SHA-256 published by GitHub (lowercase hex).
     pub sha256: Option<String>,
 }
 
 impl Versao {
-    /// Da para instalar pelo app (senao, so pela pagina).
+    /// Can be installed by the app (otherwise, only from the page).
     pub fn instalavel(&self) -> bool {
         !self.download.is_empty() && self.sha256.is_some()
     }
@@ -55,23 +55,23 @@ impl Versao {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Estado {
     Nada,
-    /// Verificacao pedida pelo usuario em andamento.
+    /// Check requested by the user, in progress.
     Verificando,
-    /// Resultado da verificacao pedida pelo usuario.
+    /// Result of the check requested by the user.
     EmDia,
     FalhaVerificacao(String),
     Disponivel(Versao),
-    /// Baixando (fracao de 0 a 1).
+    /// Downloading (fraction from 0 to 1).
     Baixando(Versao, f32),
     FalhaInstalacao(Versao, String),
-    /// Instalada: o app esta fechando para abrir a versao nova.
+    /// Installed: the app is closing to open the new version.
     Reiniciando(Versao),
 }
 
 static ESTADO: Mutex<Estado> = Mutex::new(Estado::Nada);
 static AVISO: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
 
-/// Funcao chamada a cada mudanca de estado (redesenhar a interface).
+/// Function called on every state change (to repaint the UI).
 pub fn ao_mudar(f: impl Fn() + Send + Sync + 'static) {
     let _ = AVISO.set(Box::new(f));
 }
@@ -87,7 +87,7 @@ fn definir(e: Estado) {
     }
 }
 
-/// Numero da versao nova, enquanto houver uma a oferecer.
+/// Number of the new version, while there is one to offer.
 pub fn disponivel() -> Option<String> {
     match estado() {
         Estado::Disponivel(v)
@@ -98,7 +98,7 @@ pub fn disponivel() -> Option<String> {
     }
 }
 
-/// Esconde o resultado da verificacao manual (ao sair da tela).
+/// Hides the result of the manual check (when leaving the screen).
 pub fn limpar_resultado() {
     if matches!(estado(), Estado::EmDia | Estado::FalhaVerificacao(_)) {
         definir(Estado::Nada);
@@ -109,13 +109,13 @@ pub fn pagina_releases() -> String {
     format!("https://github.com/{REPOSITORIO}/releases")
 }
 
-/// VPN_ATUALIZACAO_URL troca o endereco consultado (so para testes).
+/// VPN_ATUALIZACAO_URL changes the queried address (tests only).
 fn url_api() -> String {
     std::env::var("VPN_ATUALIZACAO_URL")
         .unwrap_or_else(|_| format!("https://api.github.com/repos/{REPOSITORIO}/releases/latest"))
 }
 
-/// Verificacao automatica, enquanto `ativa()` disser que sim.
+/// Automatic check, while `ativa()` says yes.
 pub fn iniciar_verificacao_periodica(ativa: fn() -> bool) {
     std::thread::spawn(move || {
         std::thread::sleep(PRIMEIRA_VERIFICACAO);
@@ -128,7 +128,7 @@ pub fn iniciar_verificacao_periodica(ativa: fn() -> bool) {
     });
 }
 
-/// Verificacao pedida pelo usuario: mostra o resultado, inclusive falhas.
+/// Check requested by the user: shows the result, failures included.
 pub fn verificar_agora() {
     std::thread::spawn(|| verificar(true));
 }
@@ -153,7 +153,7 @@ fn verificar(manual: bool) {
 
 fn consultar(url: &str, atual: &str) -> Result<Option<Versao>, String> {
     let corpo = http_get(url, LIMITE_JSON, &mut |_| {}).map_err(|e| match e {
-        // repositorio privado/inexistente ou sem nenhuma release publicada
+        // private/non-existent repository or no published release
         ErroHttp::Status(404) => {
             tr!("Nenhuma versão publicada foi encontrada.", "No published version was found.")
                 .to_string()
@@ -163,7 +163,7 @@ fn consultar(url: &str, atual: &str) -> Result<Option<Versao>, String> {
     interpretar(&corpo, atual)
 }
 
-/// Le a resposta de `releases/latest`; Some se for mais nova que `atual`.
+/// Reads the `releases/latest` response; Some if newer than `atual`.
 fn interpretar(corpo: &[u8], atual: &str) -> Result<Option<Versao>, String> {
     let inesperada = || tr!("Resposta inesperada do GitHub.", "Unexpected response from GitHub.").to_string();
     let v: serde_json::Value = serde_json::from_slice(corpo).map_err(|_| inesperada())?;
@@ -205,8 +205,8 @@ fn interpretar(corpo: &[u8], atual: &str) -> Result<Option<Versao>, String> {
     Ok(Some(versao))
 }
 
-/// "1.2.3" > "1.2.2"? Versoes com sufixo ("1.3.0-rc1") nunca sao
-/// oferecidas: pre-lancamentos ficam para quem baixa pela pagina.
+/// "1.2.3" > "1.2.2"? Versions with a suffix ("1.3.0-rc1") are never
+/// offered: pre-releases are left to those who download from the page.
 fn versao_maior(nova: &str, atual: &str) -> bool {
     fn partes(s: &str) -> Option<[u64; 3]> {
         let mut out = [0u64; 3];
@@ -226,9 +226,9 @@ fn versao_maior(nova: &str, atual: &str) -> bool {
     }
 }
 
-// ------------------------------------------------------------ instalacao --
+// ------------------------------------------------------------- install --
 
-/// Baixa, confere e instala a versao em segundo plano; depois reabre o app.
+/// Downloads, verifies and installs the version in the background; then reopens the app.
 pub fn instalar(v: Versao) {
     if matches!(estado(), Estado::Baixando(..) | Estado::Reiniciando(_)) {
         return;
@@ -247,7 +247,7 @@ pub fn instalar(v: Versao) {
         };
         let mut ultimo = 0u32;
         let resultado = baixar_e_trocar(&v, &alvo, &mut |fracao| {
-            // redesenha a cada 1% (nao a cada pedaco baixado)
+            // repaint on every 1% (not on every downloaded chunk)
             let pct = (fracao * 100.0) as u32;
             if pct != ultimo {
                 ultimo = pct;
@@ -274,8 +274,8 @@ pub fn instalar(v: Versao) {
     });
 }
 
-/// `VPN.exe` -> `VPN.exe.<sufixo>`, na mesma pasta (mesmo disco: a troca
-/// e um simples renomear).
+/// `VPN.exe` -> `VPN.exe.<sufixo>`, in the same folder (same disk: the swap
+/// is a simple rename).
 fn vizinho(alvo: &Path, sufixo: &str) -> PathBuf {
     let nome = alvo
         .file_name()
@@ -347,7 +347,7 @@ fn baixar_e_trocar(
             )
         })?;
 
-    // a partir da primeira versao assinada, so aceita o mesmo editor
+    // from the first signed version on, only the same publisher is accepted
     if let Some(editor) = assinante(alvo) {
         if assinante(&novo).as_deref() != Some(editor.as_str()) {
             let _ = std::fs::remove_file(&novo);
@@ -360,8 +360,8 @@ fn baixar_e_trocar(
         }
     }
 
-    // o Windows deixa renomear o executavel em uso (nao apagar): o atual vira
-    // .antigo, apagado na proxima abertura
+    // Windows allows renaming the running executable (not deleting it): the
+    // current one becomes .antigo, deleted on the next start
     let _ = std::fs::remove_file(&antigo);
     let falha = |e: std::io::Error| {
         trf!("Não consegui substituir o aplicativo: {e}", "Could not replace the app: {e}")
@@ -378,8 +378,8 @@ fn baixar_e_trocar(
     Ok(())
 }
 
-/// Abre a versao nova (que espera este processo terminar) e encerra este,
-/// desconectando antes. As contas ligadas sao religadas pela versao nova.
+/// Opens the new version (which waits for this process to end) and exits this
+/// one, disconnecting first. The new version turns the connected accounts back on.
 fn reabrir(alvo: &Path) -> std::io::Result<()> {
     let m = crate::motor::get();
     let ligadas: Vec<String> = m
@@ -400,8 +400,8 @@ fn reabrir(alvo: &Path) -> std::io::Result<()> {
 pub const ARG_APOS_ATUALIZAR: &str = "--apos-atualizar";
 pub const ARG_RECONECTAR: &str = "--reconectar";
 
-/// Na abertura depois de uma atualizacao: espera a versao anterior fechar
-/// (ela ainda desconecta as VPNs e segura a instancia unica).
+/// On the first start after an update: waits for the previous version to close
+/// (it is still disconnecting the VPNs and holding the single instance).
 pub fn aguardar_processo(pid: u32, limite: Duration) {
     const SYNCHRONIZE: u32 = 0x0010_0000;
     #[link(name = "kernel32")]
@@ -419,7 +419,7 @@ pub fn aguardar_processo(pid: u32, limite: Duration) {
     }
 }
 
-/// Apaga sobras de uma atualizacao (o executavel anterior).
+/// Deletes leftovers of an update (the previous executable).
 pub fn limpar_restos() {
     if let Ok(exe) = std::env::current_exe() {
         let _ = std::fs::remove_file(vizinho(&exe, "antigo"));
@@ -446,9 +446,9 @@ fn sha256_hex(dados: &[u8]) -> Option<String> {
     (status == 0).then(|| saida.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-// ------------------------------------------- assinatura (WinVerifyTrust) --
+// ----------------------------------------------- signature (WinVerifyTrust) --
 
-/// Nome do editor, se o arquivo tem assinatura Authenticode valida.
+/// Publisher name, if the file has a valid Authenticode signature.
 pub fn assinante(caminho: &Path) -> Option<String> {
     use windows_sys::Win32::Security::Cryptography::{
         CertGetNameStringW, CERT_NAME_SIMPLE_DISPLAY_TYPE,
@@ -472,7 +472,7 @@ pub fn assinante(caminho: &Path) -> Option<String> {
     dados.dwStateAction = WTD_STATEACTION_VERIFY;
 
     let mut acao = WINTRUST_ACTION_GENERIC_VERIFY_V2;
-    let sem_janela = -1isize as *mut c_void; // INVALID_HANDLE_VALUE: nunca mostra UI
+    let sem_janela = -1isize as *mut c_void; // INVALID_HANDLE_VALUE: never shows UI
     let resultado = unsafe {
         WinVerifyTrust(sem_janela, &mut acao, &mut dados as *mut _ as *mut c_void)
     };
@@ -518,7 +518,7 @@ pub fn assinante(caminho: &Path) -> Option<String> {
 
 #[derive(Debug, PartialEq)]
 enum ErroHttp {
-    /// Falha de rede/TLS (codigo do WinHTTP).
+    /// Network/TLS failure (WinHTTP code).
     Rede(u32),
     Status(u32),
     Grande,
@@ -542,7 +542,7 @@ impl ErroHttp {
     }
 }
 
-/// Fecha o handle do WinHTTP ao sair do escopo.
+/// Closes the WinHTTP handle when it goes out of scope.
 struct Handle(*mut c_void);
 impl Drop for Handle {
     fn drop(&mut self) {
@@ -556,15 +556,15 @@ fn ultimo_erro() -> u32 {
     unsafe { windows_sys::Win32::Foundation::GetLastError() }
 }
 
-/// GET simples (segue redirecionamentos HTTPS, como o do download dos
-/// anexos). `progresso` recebe os bytes ja lidos.
+/// Simple GET (follows HTTPS redirects, like the one of the asset
+/// downloads). `progresso` receives the bytes read so far.
 fn http_get(url: &str, limite: usize, progresso: &mut dyn FnMut(u64)) -> Result<Vec<u8>, ErroHttp> {
     use windows_sys::Win32::Networking::WinHttp::*;
 
     let url_w: Vec<u16> = url.encode_utf16().collect();
     let mut partes: URL_COMPONENTS = unsafe { std::mem::zeroed() };
     partes.dwStructSize = std::mem::size_of::<URL_COMPONENTS>() as u32;
-    // -1: devolve ponteiros para dentro da propria URL
+    // -1: returns pointers into the URL itself
     partes.dwSchemeLength = u32::MAX;
     partes.dwHostNameLength = u32::MAX;
     partes.dwUrlPathLength = u32::MAX;
@@ -689,10 +689,10 @@ mod tests {
         assert!(versao_maior("1.0.1", "1.0.0"));
         assert!(versao_maior("1.1", "1.0.9"));
         assert!(versao_maior("2.0.0", "1.12.3"));
-        assert!(versao_maior("1.0.10", "1.0.9")); // numerico, nao alfabetico
+        assert!(versao_maior("1.0.10", "1.0.9")); // numeric, not alphabetical
         assert!(!versao_maior("1.0.0", "1.0.0"));
         assert!(!versao_maior("0.9.9", "1.0.0"));
-        // pre-lancamentos e lixo nunca sao oferecidos
+        // pre-releases and garbage are never offered
         assert!(!versao_maior("1.1.0-rc1", "1.0.0"));
         assert!(!versao_maior("abc", "1.0.0"));
         assert!(!versao_maior("", "1.0.0"));
@@ -725,16 +725,16 @@ mod tests {
         assert!(v.instalavel());
         assert!(v.pagina.ends_with("/v1.0.1"));
 
-        // mesma versao ou mais antiga: nada a oferecer
+        // same or older version: nothing to offer
         assert_eq!(interpretar(&release("v1.0.0", &anexo), "1.0.0").unwrap(), None);
-        // sem o digest publicado, so pela pagina
+        // without the published digest, only from the page
         let sem_hash = r#"{"name":"VPN.exe","browser_download_url":"https://x/VPN.exe","size":1}"#;
         let v = interpretar(&release("v2.0.0", sem_hash), "1.0.0").unwrap().unwrap();
         assert!(!v.instalavel());
-        // sem o anexo, so pela pagina
+        // without the asset, only from the page
         let v = interpretar(&release("v2.0.0", ""), "1.0.0").unwrap().unwrap();
         assert!(!v.instalavel());
-        // pre-lancamento nunca e oferecido
+        // a pre-release is never offered
         let pre = String::from_utf8(release("v9.0.0", &anexo))
             .unwrap()
             .replace(r#""prerelease":false"#, r#""prerelease":true"#);
@@ -747,7 +747,7 @@ mod tests {
         assert_eq!(sha256_hex(b"abc").as_deref(), Some(HASH));
     }
 
-    /// Servidor HTTP minimo em 127.0.0.1: responde cada caminho conhecido.
+    /// Minimal HTTP server on 127.0.0.1: answers each known path.
     fn servidor(rotas: Vec<(&'static str, Vec<u8>)>) -> String {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let base = format!("http://{}", l.local_addr().unwrap());
@@ -796,7 +796,7 @@ mod tests {
             sha256: Some(sha.into()),
         };
 
-        // hash diferente do publicado: recusa e nao mexe em nada
+        // hash different from the published one: refuses and touches nothing
         std::fs::write(&alvo, b"MZ versao atual").unwrap();
         let errado = "0".repeat(64);
         let e = baixar_e_trocar(&versao(&errado), &alvo, &mut |_| {}).unwrap_err();
@@ -804,7 +804,7 @@ mod tests {
         assert_eq!(std::fs::read(&alvo).unwrap(), b"MZ versao atual");
         assert!(!vizinho(&alvo, "novo").exists());
 
-        // hash certo: troca, guarda a anterior como .antigo e informa o progresso
+        // right hash: swaps, keeps the previous one as .antigo and reports progress
         let mut fracoes = Vec::new();
         baixar_e_trocar(&versao(&hash), &alvo, &mut |f| fracoes.push(f)).unwrap();
         assert_eq!(std::fs::read(&alvo).unwrap(), novo_exe);
@@ -812,7 +812,7 @@ mod tests {
         assert!(!vizinho(&alvo, "novo").exists());
         assert_eq!(fracoes.last().copied(), Some(1.0));
 
-        // anexo ausente no servidor
+        // asset missing on the server
         let mut sumiu = versao(&hash);
         sumiu.download = format!("{base}/nao-existe");
         assert!(baixar_e_trocar(&sumiu, &alvo, &mut |_| {}).is_err());
@@ -832,16 +832,16 @@ mod tests {
 
     #[test]
     fn assinatura_digital() {
-        // arquivo sem assinatura
+        // unsigned file
         let p = std::env::temp_dir().join(format!("vpn-teste-assinatura-{}.exe", std::process::id()));
         std::fs::write(&p, b"MZ nada assinado").unwrap();
         assert_eq!(assinante(&p), None);
         let _ = std::fs::remove_file(&p);
 
-        // o MSI oficial embutido no release e assinado pela OpenVPN Inc.
+        // the official MSI embedded in the release is signed by OpenVPN Inc.
         let msi = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets").join("openvpn.msi");
         if msi.exists() {
-            let nome = assinante(&msi).expect("MSI do OpenVPN deveria estar assinado");
+            let nome = assinante(&msi).expect("the OpenVPN MSI should be signed");
             assert!(nome.contains("OpenVPN"), "{nome}");
         }
     }

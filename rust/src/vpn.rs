@@ -1,7 +1,7 @@
-//! Uma conexao por conta: lanca o openvpn.exe e alimenta a interface de
-//! gerenciamento com a senha da conta (token TOTP recem gerado, senha fixa
-//! ou os dois). Cada conexao usa sua propria porta de gerenciamento livre e
-//! grava o proprio log do OpenVPN; o estado vai direto para `estado`.
+//! One connection per account: starts openvpn.exe and feeds the management
+//! interface with the account's password (freshly generated TOTP token,
+//! fixed password or both). Each connection uses its own free management
+//! port and writes its own OpenVPN log; the state goes straight to `estado`.
 
 use crate::contas::Conta;
 use crate::estado::{self, Situacao, Traffic};
@@ -19,8 +19,8 @@ use std::time::{Duration, Instant};
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const MAX_AUTH_FAILURES: u32 = 3;
 
-// ---- job object: garante que o openvpn.exe morre junto com o app, ------
-// ---- mesmo se o app for finalizado a forca (sem daemon orfao) ----------
+// ---- job object: makes sure openvpn.exe dies together with the app, ----
+// ---- even if the app is killed (no orphan daemon) -----------------------
 
 const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
 const JOB_EXTENDED_LIMIT_CLASS: u32 = 9;
@@ -103,10 +103,10 @@ fn attach_kill_job(child: &Child) -> Option<JobGuard> {
     }
 }
 
-/// Controle de uma conexao em andamento.
+/// Handle of a connection in progress.
 pub struct Controller {
     pub stop: Arc<AtomicBool>,
-    /// Vira true quando a thread termina (openvpn ja encerrado).
+    /// Becomes true when the thread ends (openvpn already exited).
     pub finished: Arc<AtomicBool>,
 }
 
@@ -131,7 +131,7 @@ fn mgmt_escape(v: &str) -> String {
     v.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-/// Converte uma linha ">BYTECOUNT:<in>,<out>" em taxas (bytes/s) + totais.
+/// Turns a ">BYTECOUNT:<in>,<out>" line into rates (bytes/s) + totals.
 fn parse_bytecount(rest: &str, last: &mut Option<(Instant, u64, u64)>) -> Option<Traffic> {
     let mut it = rest.split(',');
     let down_total: u64 = it.next()?.trim().parse().ok()?;
@@ -156,9 +156,9 @@ fn parse_bytecount(rest: &str, last: &mut Option<(Instant, u64, u64)>) -> Option
     })
 }
 
-/// Quando o log do OpenVPN diz que nao ha adaptador de rede livre, devolve
-/// o tipo (hwid do tapctl) a criar. Cada conexao simultanea precisa do seu
-/// proprio adaptador virtual.
+/// When the OpenVPN log says there is no free network adapter, returns the
+/// type (tapctl hwid) to create. Each simultaneous connection needs its own
+/// virtual adapter.
 fn adaptador_em_falta(log: &str) -> Option<&'static str> {
     let linha = log.lines().find(|l| {
         l.contains("currently in use or disabled") || l.contains("create an adapter")
@@ -173,7 +173,7 @@ fn adaptador_em_falta(log: &str) -> Option<&'static str> {
     })
 }
 
-/// Linhas de erro do log do OpenVPN, para explicar uma falha ao usuario.
+/// Error lines from the OpenVPN log, to explain a failure to the user.
 fn erros_do_log(log: &str) -> Vec<String> {
     log.lines()
         .filter(|l| {
@@ -190,7 +190,7 @@ fn log_path(conta_id: &str) -> PathBuf {
         .join(format!("openvpn-{conta_id}.log"))
 }
 
-/// Espera a janela do token ter folga; retorna None se o stop foi pedido.
+/// Waits until the token window has enough time left; None if a stop was requested.
 fn fresh_token(seed: &str, force_next: bool, stop: &AtomicBool, nome: &str) -> Option<String> {
     let remaining = totp::seconds_remaining();
     if force_next || remaining < totp::MIN_TOKEN_LIFETIME {
@@ -224,7 +224,7 @@ fn wait_child(child: &mut Child, secs: u64) -> Option<i32> {
     child.try_wait().ok().flatten().and_then(|s| s.code())
 }
 
-/// Cria mais um adaptador virtual com o tapctl.exe do proprio OpenVPN.
+/// Creates another virtual adapter with OpenVPN's own tapctl.exe.
 fn criar_adaptador(openvpn: &Path, hwid: &str) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     let tapctl = openvpn.with_file_name("tapctl.exe");
@@ -240,7 +240,7 @@ fn criar_adaptador(openvpn: &Path, hwid: &str) -> Result<(), String> {
     }
 }
 
-/// Inicia a conexao da conta em segundo plano.
+/// Starts the account's connection in the background.
 pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
     let stop = Arc::new(AtomicBool::new(false));
     let finished = Arc::new(AtomicBool::new(false));
@@ -249,9 +249,9 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
     estado::definir(&conta.id, Situacao::Conectando, None);
     std::thread::spawn(move || {
         let nome = conta.nome_exibicao().to_string();
-        // VPN de tunel dividido: o caminho ate o servidor fica fixo na rede
-        // local, para nao cair quando outra VPN (de tunel completo) ligar.
-        // As rotas vivem ate o fim desta thread (Drop as remove).
+        // Split-tunnel VPN: the path to the server is pinned to the local
+        // network, so it does not drop when another (full-tunnel) VPN connects.
+        // The routes live until this thread ends (Drop removes them).
         let mut rotas = if conta.tunel_completo() == Some(true) {
             None
         } else {
@@ -274,7 +274,7 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
                 }
             }
         };
-        // ate 2 tentativas: a segunda so acontece se faltou adaptador de rede
+        // up to 2 attempts: the second one only happens if a network adapter was missing
         for tentativa in 0..2 {
             let Some(hwid) = run(&conta, &nome, &openvpn, &stop2, &mut rotas) else {
                 break;
@@ -309,8 +309,8 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
                 }
             }
         }
-        // a bandeja e atualizada aqui, e nao so pela interface: com a janela
-        // oculta o loop do egui nao roda e o icone ficaria verde
+        // the tray is updated here, not only by the UI: with the window hidden
+        // the egui loop does not run and the icon would stay green
         estado::definir(&conta.id, Situacao::Desconectado, None);
         finished2.store(true, Ordering::SeqCst);
     });
@@ -318,9 +318,9 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
     Controller { stop, finished }
 }
 
-/// Descobre pelas rotas do Windows se a VPN recem-conectada manda toda a
-/// internet por ela, e guarda na conta (mostrado no cartao e usado no aviso
-/// de conflito entre duas VPNs de tunel completo).
+/// Learns from the Windows routes whether the freshly connected VPN carries
+/// all internet traffic, and stores it in the account (shown on the card and
+/// used by the warning about two full-tunnel VPNs).
 fn registrar_tipo_de_tunel(conta: &Conta, nome: &str, ip_local: Option<&str>) {
     let Some(completo) = ip_local.and_then(crate::rotas::tunel_completo) else {
         return;
@@ -343,8 +343,8 @@ fn registrar_tipo_de_tunel(conta: &Conta, nome: &str, ip_local: Option<&str>) {
     }
 }
 
-/// Executa uma tentativa de conexao. Devolve Some(hwid) quando o OpenVPN
-/// encerrou por falta de adaptador de rede livre (vale tentar de novo).
+/// Runs one connection attempt. Returns Some(hwid) when OpenVPN exited
+/// because no network adapter was free (worth trying again).
 fn run(
     conta: &Conta,
     nome: &str,
@@ -398,7 +398,7 @@ fn run(
         }
     };
 
-    // enquanto este guard existir, o Windows mata o openvpn se o app morrer
+    // while this guard exists, Windows kills openvpn if the app dies
     let _job = attach_kill_job(&child);
 
     let mut stream: Option<TcpStream> = None;
@@ -437,7 +437,7 @@ fn run(
                         let _ = s.set_read_timeout(Some(Duration::from_millis(500)));
                         stream = Some(s);
                         let st = stream.as_mut().unwrap();
-                        // state on: eventos de estado; bytecount 2: trafego a cada 2s
+                        // state on: state events; bytecount 2: traffic every 2 s
                         let _ = st.write_all(b"state on\r\nbytecount 2\r\n");
                         st
                     }
@@ -507,7 +507,7 @@ fn run(
                         "Authentication rejected ({auth_failures}x)."
                     ),
                 );
-                // senha fixa errada nao melhora tentando de novo
+                // a wrong fixed password does not get better by retrying
                 let limite = if conta.autenticacao.usa_token() { MAX_AUTH_FAILURES } else { 1 };
                 if auth_failures >= limite {
                     let segredo = if conta.autenticacao.usa_token() {
@@ -536,8 +536,8 @@ fn run(
                 } else {
                     last_count = None;
                 }
-                // reconectando (ex.: o notebook trocou de Wi-Fi): a rota fixa
-                // do servidor precisa seguir a rede local atual
+                // reconnecting (e.g. the laptop moved to another Wi-Fi): the pinned
+                // server route has to follow the current local network
                 if situacao == Situacao::Reconectando
                     && rotas.as_mut().is_some_and(|r| r.renovar())
                 {
@@ -573,7 +573,7 @@ fn run(
     if pedido_de_parada {
         return None;
     }
-    // encerrou sozinho: o log do OpenVPN explica o motivo
+    // it exited by itself: the OpenVPN log explains why
     let texto_log = std::fs::read_to_string(&log_file).unwrap_or_default();
     if let Some(hwid) = adaptador_em_falta(&texto_log) {
         return Some(hwid);
@@ -593,12 +593,12 @@ mod tests {
         let mut last = None;
         let t1 = parse_bytecount("1000,500", &mut last).unwrap();
         assert_eq!((t1.down_total, t1.up_total), (1000, 500));
-        assert_eq!((t1.down_rate, t1.up_rate), (0.0, 0.0)); // primeira leitura
+        assert_eq!((t1.down_rate, t1.up_rate), (0.0, 0.0)); // first reading
         std::thread::sleep(Duration::from_millis(250));
         let t2 = parse_bytecount("3000,1500", &mut last).unwrap();
         assert!(t2.down_rate > 0.0 && t2.up_rate > 0.0);
         assert!(t2.down_rate > t2.up_rate);
-        // contador reiniciado (reconexao) nao gera taxa negativa
+        // counter reset (reconnection) does not produce a negative rate
         let t3 = parse_bytecount("10,5", &mut last).unwrap();
         assert_eq!((t3.down_rate, t3.up_rate), (0.0, 0.0));
         assert!(parse_bytecount("lixo", &mut last).is_none());
@@ -620,9 +620,9 @@ mod tests {
         assert_eq!(adaptador_em_falta("TLS handshake failed\nExiting due to fatal error"), None);
     }
 
-    /// Regressao (v1.1.1): quando a conexao termina - inclusive com a janela
-    /// oculta, quando o egui nao roda - a propria thread devolve a conta para
-    /// "Desconectado", e so ela (as outras contas nao sao afetadas).
+    /// Regression (v1.1.1): when the connection ends - including with the window
+    /// hidden, when egui is not running - the thread itself sets the account back
+    /// to "Disconnected", and only that one (other accounts are not affected).
     #[test]
     fn conta_volta_a_desconectado_quando_a_conexao_termina() {
         let mut conta = Conta::nova();
@@ -632,14 +632,14 @@ mod tests {
         estado::definir(&conta.id, Situacao::Conectado, Some("10.0.0.5".into()));
         estado::definir(&outra.id, Situacao::Conectado, Some("10.0.0.6".into()));
 
-        // openvpn inexistente: a tentativa falha e a thread termina
+        // non-existent openvpn: the attempt fails and the thread ends
         let ctrl = start(conta.clone(), PathBuf::from(r"C:
 ao\existe\openvpn.exe"));
         let limite = Instant::now() + Duration::from_secs(10);
         while Instant::now() < limite && !ctrl.is_finished() {
             std::thread::sleep(Duration::from_millis(50));
         }
-        assert!(ctrl.is_finished(), "a thread nao terminou");
+        assert!(ctrl.is_finished(), "the thread did not finish");
         assert_eq!(estado::obter(&conta.id).situacao, Situacao::Desconectado);
         assert_eq!(estado::obter(&outra.id).situacao, Situacao::Conectado);
         estado::remover(&conta.id);

@@ -1,19 +1,19 @@
-//! Contas de VPN: modelo, autenticacao e verificacoes do arquivo .ovpn.
+//! VPN accounts: model, authentication and checks on the .ovpn file.
 
 use crate::totp;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Como a senha enviada ao OpenVPN e formada.
+/// How the password sent to OpenVPN is built.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Autenticacao {
-    /// A senha e o token TOTP gerado na hora (Google Authenticator).
+    /// The password is the TOTP token generated on the spot (Google Authenticator).
     #[default]
     Token,
-    /// Senha fixa, sem token.
+    /// Fixed password, no token.
     Senha,
-    /// Senha fixa seguida do token de 6 digitos ("senha123456").
+    /// Fixed password followed by the 6-digit token ("password123456").
     SenhaMaisToken,
 }
 
@@ -45,27 +45,27 @@ impl Autenticacao {
 pub struct Conta {
     pub id: String,
     pub nome: String,
-    /// Caminho completo do arquivo .ovpn.
+    /// Full path of the .ovpn file.
     pub config: String,
     pub usuario: String,
     #[serde(default)]
     pub autenticacao: Autenticacao,
-    /// Seed base32 (normalizada) quando a autenticacao usa token.
+    /// Base32 seed (normalized) when the authentication uses a token.
     #[serde(default)]
     pub seed: String,
-    /// Senha fixa quando a autenticacao usa senha.
+    /// Fixed password when the authentication uses a password.
     #[serde(default)]
     pub senha: String,
-    /// Tipo de tunel observado na ultima conexao: Some(true) = toda a
-    /// internet passa pela VPN; Some(false) = so a rede da VPN. None = ainda
-    /// nao conectou (ou o arquivo .ovpn mudou desde entao).
+    /// Tunnel type observed on the last connection: Some(true) = all internet
+    /// traffic goes through the VPN; Some(false) = only the VPN network. None =
+    /// not connected yet (or the .ovpn file changed since then).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tunel_completo: Option<bool>,
 }
 
 static CONTADOR_ID: AtomicU64 = AtomicU64::new(0);
 
-/// Identificador unico e estavel de conta (nunca reaproveitado).
+/// Unique, stable account identifier (never reused).
 pub fn novo_id() -> String {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -92,15 +92,15 @@ impl Conta {
         }
     }
 
-    /// Toda a internet passa por esta VPN? Usa o que foi observado na
-    /// ultima conexao; sem isso, o que o arquivo .ovpn diz (o servidor ainda
-    /// pode mandar a rota padrao, o que so se descobre ao conectar).
+    /// Does all internet traffic go through this VPN? Uses what was observed on
+    /// the last connection; without that, what the .ovpn file says (the server
+    /// may still push the default route, which is only known after connecting).
     pub fn tunel_completo(&self) -> Option<bool> {
         self.tunel_completo
             .or_else(|| redireciona_tudo(Path::new(&self.config)).then_some(true))
     }
 
-    /// Nome do arquivo .ovpn (sem o caminho), para exibir.
+    /// Name of the .ovpn file (without the path), for display.
     pub fn arquivo(&self) -> String {
         Path::new(&self.config)
             .file_name()
@@ -108,8 +108,8 @@ impl Conta {
             .unwrap_or_default()
     }
 
-    /// Confere se a conta tem tudo o que precisa para conectar.
-    /// Retorna a mensagem para o usuario quando falta algo.
+    /// Checks whether the account has everything it needs to connect.
+    /// Returns the message for the user when something is missing.
     pub fn validar(&self) -> Result<(), String> {
         if self.nome.trim().is_empty() {
             return Err(tr!("Informe um nome para a conta.", "Enter a name for the account.").into());
@@ -135,8 +135,8 @@ impl Conta {
         Ok(())
     }
 
-    /// Senha a enviar ao OpenVPN. `token` e o codigo TOTP da janela atual
-    /// (obrigatorio quando a autenticacao usa token).
+    /// Password to send to OpenVPN. `token` is the TOTP code of the current
+    /// window (required when the authentication uses a token).
     pub fn compor_senha(&self, token: Option<&str>) -> Option<String> {
         match self.autenticacao {
             Autenticacao::Token => token.map(str::to_string),
@@ -146,10 +146,10 @@ impl Conta {
     }
 }
 
-/// True quando o .ovpn manda TODO o trafego pela VPN (`redirect-gateway`).
-/// Duas conexoes assim ao mesmo tempo disputam a rota padrao e a ultima a
-/// conectar vence. So enxerga a diretiva do arquivo: o servidor tambem pode
-/// enviar essa rota, e isso so se descobre depois de conectar.
+/// True when the .ovpn sends ALL traffic through the VPN (`redirect-gateway`).
+/// Two such connections at the same time fight over the default route and
+/// the last one to connect wins. Only sees the file directive: the server
+/// can also push that route, which is only known after connecting.
 pub fn redireciona_tudo(config: &Path) -> bool {
     let Ok(texto) = std::fs::read_to_string(config) else {
         return false;
@@ -227,7 +227,7 @@ mod tests {
         c.seed = "123!".into();
         assert!(c.validar().unwrap_err().contains("Seed"));
 
-        // senha fixa nao exige seed, mas exige senha
+        // a fixed password does not require a seed, but does require the password
         let mut c = ok.clone();
         c.autenticacao = Autenticacao::Senha;
         c.seed.clear();

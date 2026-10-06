@@ -1,11 +1,11 @@
-# NUNCA commitar configs de VPN (contem chave privada e certificados)
+# NEVER commit VPN configs (they contain private keys and certificates)
 *.ovpn
 
-# artefatos de build
+# build artifacts
 rust/target/
 rust/target-dev/
 __pycache__/
 icon_preview.png
 
-# instalador oficial do OpenVPN: baixado pelo build-release.ps1 (5,6 MB)
+# official OpenVPN installer: downloaded by build-release.ps1 (5.6 MB)
 rust/assets/openvpn.msi

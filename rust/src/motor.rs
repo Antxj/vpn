@@ -1,6 +1,6 @@
-//! Motor: guarda as contas e as conexoes ativas. E global e thread-safe
-//! porque e usado tanto pela interface quanto pelo menu da bandeja (que
-//! funciona com a janela oculta, quando o loop do egui nao roda).
+//! Engine: holds the accounts and the active connections. It is global and
+//! thread-safe because it is used both by the UI and by the tray menu (which
+//! works with the window hidden, when the egui loop does not run).
 
 use crate::contas::Conta;
 use crate::dpapi::{self, Settings};
@@ -11,13 +11,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-/// Por que uma conexao nao pode ser iniciada.
+/// Why a connection cannot be started.
 #[derive(Debug, PartialEq)]
 pub enum ErroConexao {
     SemAdministrador,
     OpenVpnAusente,
     ContaInexistente,
-    /// Mensagem pronta para o usuario (dados incompletos, conflito etc.).
+    /// Message ready for the user (incomplete data, conflict etc.).
     Invalida(String),
 }
 
@@ -51,7 +51,7 @@ pub struct Motor {
 
 static MOTOR: OnceLock<Motor> = OnceLock::new();
 
-/// O motor do processo (carrega as contas salvas na primeira chamada).
+/// The process engine (loads the saved accounts on the first call).
 pub fn get() -> &'static Motor {
     MOTOR.get_or_init(|| Motor {
         settings: Mutex::new(dpapi::load_settings()),
@@ -59,8 +59,8 @@ pub fn get() -> &'static Motor {
     })
 }
 
-/// Verifica se o processo esta elevado (o manifesto pede administrador; a
-/// checagem cobre execucoes fora do caminho normal, como o build de dev).
+/// Checks whether the process is elevated (the manifest requests administrator;
+/// the check covers runs outside the normal path, such as the dev build).
 pub fn eh_administrador() -> bool {
     #[link(name = "shell32")]
     extern "system" {
@@ -70,7 +70,7 @@ pub fn eh_administrador() -> bool {
 }
 
 impl Motor {
-    // ------------------------------------------------------------ contas --
+    // ---------------------------------------------------------- accounts --
 
     pub fn contas(&self) -> Vec<Conta> {
         self.settings.lock().unwrap().contas.clone()
@@ -86,7 +86,7 @@ impl Motor {
             .cloned()
     }
 
-    /// (id, nome) de cada conta, na ordem da lista.
+    /// (id, name) of each account, in list order.
     pub fn nomes(&self) -> Vec<(String, String)> {
         self.settings
             .lock()
@@ -97,12 +97,12 @@ impl Motor {
             .collect()
     }
 
-    /// Inclui ou atualiza uma conta (pelo id) e grava em disco.
+    /// Adds or updates an account (by id) and saves it to disk.
     pub fn salvar_conta(&self, mut conta: Conta) {
         let mut s = self.settings.lock().unwrap();
         match s.contas.iter_mut().find(|c| c.id == conta.id) {
             Some(existente) => {
-                // outro .ovpn: o tipo de tunel observado nao vale mais
+                // another .ovpn: the observed tunnel type no longer applies
                 if existente.config != conta.config {
                     conta.tunel_completo = None;
                 }
@@ -113,7 +113,7 @@ impl Motor {
         dpapi::save_settings(&s);
     }
 
-    /// Guarda o tipo de tunel observado ao conectar (grava so se mudou).
+    /// Stores the tunnel type observed on connect (saves only if it changed).
     pub fn registrar_tunel(&self, id: &str, completo: bool) -> bool {
         let mut s = self.settings.lock().unwrap();
         let Some(c) = s.contas.iter_mut().find(|c| c.id == id) else {
@@ -127,7 +127,7 @@ impl Motor {
         true
     }
 
-    /// Idioma escolhido (None = automatico pelo Windows).
+    /// Chosen language (None = automatic from Windows).
     pub fn idioma(&self) -> Option<crate::i18n::Idioma> {
         let s = self.settings.lock().unwrap();
         s.idioma.as_deref().and_then(crate::i18n::Idioma::do_codigo)
@@ -160,7 +160,7 @@ impl Motor {
         dpapi::save_settings(&s);
     }
 
-    /// Procurar novas versoes automaticamente (padrao: sim).
+    /// Check for new versions automatically (default: yes).
     pub fn verifica_atualizacoes(&self) -> bool {
         self.settings.lock().unwrap().atualizacoes != Some(false)
     }
@@ -171,9 +171,9 @@ impl Motor {
         dpapi::save_settings(&s);
     }
 
-    // --------------------------------------------------------- conexoes --
+    // ------------------------------------------------------- connections --
 
-    /// Conexao em andamento (conectando, conectada ou encerrando).
+    /// Connection in progress (connecting, connected or shutting down).
     pub fn ativa(&self, id: &str) -> bool {
         self.conexoes
             .lock()
@@ -190,7 +190,7 @@ impl Motor {
             .any(|c| !c.is_finished())
     }
 
-    /// Outras contas ativas que tambem mandam todo o trafego pela VPN.
+    /// Other active accounts that also send all traffic through the VPN.
     pub fn conflitos_de_rota(&self, id: &str) -> Vec<String> {
         let Some(conta) = self.conta(id) else {
             return Vec::new();
@@ -206,7 +206,7 @@ impl Motor {
             .collect()
     }
 
-    /// Valida a conta e inicia a conexao em segundo plano.
+    /// Validates the account and starts the connection in the background.
     pub fn conectar(&self, id: &str, openvpn: Option<PathBuf>) -> Result<(), ErroConexao> {
         if self.ativa(id) {
             return Ok(());
@@ -218,7 +218,7 @@ impl Motor {
         let conta = self.conta(id).ok_or(ErroConexao::ContaInexistente)?;
         conta.validar().map_err(ErroConexao::Invalida)?;
 
-        // o mesmo .ovpn duas vezes ao mesmo tempo disputaria as mesmas rotas
+        // the same .ovpn twice at the same time would fight over the same routes
         let mesma_config = self.contas().into_iter().find(|c| {
             c.id != id
                 && self.ativa(&c.id)
@@ -254,8 +254,8 @@ impl Motor {
         }
     }
 
-    /// Desconecta tudo (ate 15s) e encerra o processo - funciona mesmo com o
-    /// loop do egui parado. Nao retorna.
+    /// Disconnects everything (up to 15 s) and exits the process - works even
+    /// with the egui loop stopped. Does not return.
     pub fn encerrar(&self) -> ! {
         self.desconectar_todas();
         let limite = Instant::now() + Duration::from_secs(15);

@@ -1,8 +1,8 @@
-// Recursos do VPN: icone, manifesto UAC e informacoes de versao.
+// VPN resources: icon, UAC manifest and version information.
 
 1 ICON "assets/icon.ico"
 
-// RT_MANIFEST (tipo 24), id 1 = CREATEPROCESS_MANIFEST_RESOURCE_ID
+// RT_MANIFEST (type 24), id 1 = CREATEPROCESS_MANIFEST_RESOURCE_ID
 1 24 "assets/app.manifest"
 
 1 VERSIONINFO

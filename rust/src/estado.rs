@@ -1,14 +1,14 @@
-//! Estado compartilhado das conexoes, por conta.
+//! Shared connection state, per account.
 //!
-//! As threads de conexao escrevem aqui DIRETAMENTE (nao por canal da
-//! interface): com a janela oculta o loop do egui nao roda, e a bandeja
-//! precisa refletir quedas e desconexoes mesmo assim. A interface e o timer
-//! da bandeja apenas leem.
+//! The connection threads write here DIRECTLY (not through a UI channel):
+//! with the window hidden the egui loop does not run, and the tray still
+//! has to reflect drops and disconnections. The UI and the tray timer
+//! only read.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, OnceLock};
 
-/// Linhas mantidas no log da interface.
+/// Lines kept in the UI log.
 const MAX_LOG: usize = 400;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -21,7 +21,7 @@ pub enum Situacao {
 }
 
 impl Situacao {
-    /// Em transicao (o icone fica ambar).
+    /// In transition (the icon turns amber).
     pub fn em_transicao(self) -> bool {
         matches!(
             self,
@@ -86,7 +86,7 @@ fn com<R>(f: impl FnOnce(&mut Global) -> R) -> R {
     f(guard.get_or_insert_with(Global::default))
 }
 
-/// Registra quem deve ser avisado a cada mudanca (a interface pede repintura).
+/// Registers who must be notified on every change (the UI asks for a repaint).
 pub fn ao_mudar(f: impl Fn() + Send + Sync + 'static) {
     let _ = REPINTAR.set(Box::new(f));
 }
@@ -97,7 +97,7 @@ fn avisar() {
     }
 }
 
-/// Mapeia o estado do OpenVPN (>STATE:) para a situacao da conta.
+/// Maps the OpenVPN state (>STATE:) to the account status.
 pub fn situacao_do_openvpn(estado: &str) -> Situacao {
     match estado {
         "CONNECTED" => Situacao::Conectado,
@@ -145,7 +145,7 @@ pub fn remover(conta: &str) {
     avisar();
 }
 
-/// Acrescenta uma linha ao log, prefixada com hora e nome da conta.
+/// Appends a line to the log, prefixed with the time and the account name.
 pub fn log(origem: &str, msg: impl AsRef<str>) {
     let linha = if origem.is_empty() {
         format!("{} {}", hora_local(), msg.as_ref())
@@ -165,14 +165,14 @@ pub fn log_linhas() -> Vec<String> {
     com(|g| g.log.iter().cloned().collect())
 }
 
-/// Situacao geral exibida no icone da bandeja.
+/// Overall status shown by the tray icon.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Agregado {
-    /// Nenhuma conexao ativa (cinza).
+    /// No active connection (gray).
     Nenhuma,
-    /// Alguma conexao conectando/reconectando/desconectando (ambar).
+    /// Some connection connecting/reconnecting/disconnecting (amber).
     Transicao,
-    /// Ha conexao ativa e nenhuma em transicao (verde).
+    /// There is an active connection and none in transition (green).
     Conectado,
 }
 
@@ -191,8 +191,8 @@ pub fn agregar(situacoes: impl Iterator<Item = Situacao>) -> Agregado {
     }
 }
 
-/// Resumo de todas as contas para a bandeja: situacao do icone e linhas
-/// do tooltip. `contas` = (id, nome) na ordem da lista.
+/// Summary of all accounts for the tray: icon status and tooltip lines.
+/// `contas` = (id, name) in list order.
 pub fn resumo(contas: &[(String, String)]) -> (Agregado, Vec<String>) {
     let estados: Vec<(String, EstadoConta)> = contas
         .iter()
@@ -227,7 +227,7 @@ pub fn resumo(contas: &[(String, String)]) -> (Agregado, Vec<String>) {
     (agregado, linhas)
 }
 
-/// Timestamp curto HH:MM:SS via GetLocalTime.
+/// Short HH:MM:SS timestamp via GetLocalTime.
 pub fn hora_local() -> String {
     #[repr(C)]
     #[derive(Default)]
@@ -268,7 +268,7 @@ mod tests {
         assert_eq!(agregar([].into_iter()), Agregado::Nenhuma);
         assert_eq!(agregar([Desconectado, Desconectado].into_iter()), Agregado::Nenhuma);
         assert_eq!(agregar([Conectado, Desconectado].into_iter()), Agregado::Conectado);
-        // basta uma em transicao para o icone ficar ambar
+        // a single one in transition is enough to turn the icon amber
         assert_eq!(agregar([Conectado, Reconectando].into_iter()), Agregado::Transicao);
         assert_eq!(agregar([Desconectando].into_iter()), Agregado::Transicao);
     }
@@ -285,7 +285,7 @@ mod tests {
         let e = obter(&c);
         assert_eq!(e.ip, None);
         assert_eq!(e.trafego, None);
-        // trafego atrasado de uma conexao que caiu nao "revive" o contador
+        // late traffic from a connection that dropped does not "revive" the counter
         trafego(&c, t());
         assert_eq!(obter(&c).trafego, None);
         remover(&c);

@@ -1,14 +1,14 @@
-//! TOTP (RFC 6238) padrao Google Authenticator: HMAC-SHA1, 30s, 6 digitos.
+//! TOTP (RFC 6238), Google Authenticator flavor: HMAC-SHA1, 30 s, 6 digits.
 
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const PERIOD: u64 = 30;
-/// Segundos restantes minimos para usar o token da janela atual.
+/// Minimum seconds left to use the token of the current window.
 pub const MIN_TOKEN_LIFETIME: u64 = 5;
 
-/// Remove espacos, poe em maiusculas, tira '=' e valida o base32.
+/// Removes spaces, uppercases, strips '=' and validates the base32.
 pub fn normalize_seed(seed: &str) -> Option<String> {
     let s: String = seed.split_whitespace().collect();
     let s = s.to_uppercase();
@@ -23,11 +23,11 @@ pub fn normalize_seed(seed: &str) -> Option<String> {
 pub fn now_unix() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("relogio antes de 1970")
+        .expect("clock before 1970")
         .as_secs()
 }
 
-/// Segundos que faltam para a proxima janela de 30s.
+/// Seconds left until the next 30 s window.
 pub fn seconds_remaining() -> u64 {
     PERIOD - (now_unix() % PERIOD)
 }
@@ -55,7 +55,7 @@ pub fn totp_now(seed_b32: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    /// Vetores oficiais da RFC 6238 (SHA1): seed ASCII "12345678901234567890".
+    /// Official RFC 6238 test vectors (SHA1): ASCII seed "12345678901234567890".
     const SEED: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
 
     #[test]

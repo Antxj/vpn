@@ -1,12 +1,12 @@
-# Gera o VPN.exe a partir do codigo do repositorio, num ambiente limpo do
-# GitHub, e cria um RASCUNHO de release com os arquivos. O rascunho so vira
-# publico quando alguem revisa e publica manualmente.
+# Builds VPN.exe from the repository source in a clean GitHub environment
+# and creates a DRAFT release with the files. The draft only becomes public
+# when someone reviews and publishes it manually.
 #
-# Disparo: ao enviar uma tag vX.Y.Z (ou manualmente, so para testar o build -
-# nesse caso nenhum release e criado).
+# Trigger: pushing a vX.Y.Z tag (or manually, only to test the build - in
+# that case no release is created).
 #
-# Acoes de terceiros fixadas pelo hash do commit (nao pela tag, que pode
-# ser movida).
+# Third-party actions are pinned by commit hash (not by tag, which can be
+# moved).
 
 name: release
 
@@ -22,7 +22,7 @@ jobs:
   build:
     runs-on: windows-2022
     permissions:
-      contents: write # criar o rascunho do release
+      contents: write # create the draft release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,7 +33,7 @@ jobs:
         run: |
           rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
           rustup default stable-x86_64-pc-windows-gnu
-          # windres e o linker do toolchain GNU vem do MinGW-w64
+          # windres and the linker of the GNU toolchain come from MinGW-w64
           if (-not (Get-Command windres -ErrorAction SilentlyContinue)) {
             if (Test-Path C:\mingw64\bin\windres.exe) {
               "C:\mingw64\bin" >> $env:GITHUB_PATH
@@ -50,11 +50,11 @@ jobs:
         run: |
           $versao = (Select-String -Path rust/Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
           if ("v$versao" -ne $env:GITHUB_REF_NAME) {
-            throw "A tag $env:GITHUB_REF_NAME nao corresponde a versao $versao do Cargo.toml."
+            throw "Tag $env:GITHUB_REF_NAME does not match version $versao in Cargo.toml."
           }
 
-      # baixa e confere o MSI oficial do OpenVPN, roda os testes, compila e
-      # verifica o binario (o mesmo script do build local)
+      # downloads and verifies the official OpenVPN MSI, runs the tests, builds and
+      # checks the binary (the same script as the local build)
       - name: Release build
         shell: pwsh
         run: ./rust/build-release.ps1
@@ -80,11 +80,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # tag reenviada (ex.: movida para outro commit): o release ja existe,
-          # nao cria um segundo rascunho com o mesmo nome
+          # tag pushed again (e.g. moved to another commit): the release already
+          # exists, so do not create a second draft with the same name
           gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
-            "Ja existe um release para $env:GITHUB_REF_NAME; nenhum rascunho novo foi criado." >> $env:GITHUB_STEP_SUMMARY
+            "A release for $env:GITHUB_REF_NAME already exists; no new draft was created." >> $env:GITHUB_STEP_SUMMARY
             exit 0
           }
           gh release create $env:GITHUB_REF_NAME dist/VPN.exe `

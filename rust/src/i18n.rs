@@ -1,15 +1,15 @@
-//! Idioma da interface: portugues (Brasil) ou ingles.
+//! Interface language: Portuguese (Brazil) or English.
 //!
-//! Padrao: o idioma do Windows (portugues -> pt-BR; qualquer outro ->
-//! ingles). O usuario pode fixar um dos dois na tela de contas.
+//! Default: the Windows language (Portuguese -> pt-BR; anything else ->
+//! English). The user can pin either one on the accounts screen.
 //!
-//! Os textos ficam no proprio codigo, lado a lado:
-//! `tr!("Conectar", "Connect")` devolve &'static str e
-//! `trf!("{n} de {total}", "{n} of {total}")` monta uma String (format!).
+//! The texts live in the code itself, side by side:
+//! `tr!("Conectar", "Connect")` returns &'static str and
+//! `trf!("{n} de {total}", "{n} of {total}")` builds a String (format!).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Texto fixo no idioma atual.
+/// Fixed text in the current language.
 macro_rules! tr {
     ($pt:literal, $en:literal $(,)?) => {
         if $crate::i18n::pt() {
@@ -20,7 +20,7 @@ macro_rules! tr {
     };
 }
 
-/// Texto formatado (como format!) no idioma atual.
+/// Formatted text (like format!) in the current language.
 macro_rules! trf {
     ($pt:literal, $en:literal $(, $arg:expr)* $(,)?) => {
         if $crate::i18n::pt() {
@@ -38,7 +38,7 @@ pub enum Idioma {
 }
 
 impl Idioma {
-    /// Codigo gravado nas configuracoes.
+    /// Code stored in the settings.
     pub fn codigo(self) -> &'static str {
         match self {
             Idioma::Portugues => "pt",
@@ -54,7 +54,7 @@ impl Idioma {
         }
     }
 
-    /// Nome do idioma escrito nele mesmo (para o seletor).
+    /// Language name written in itself (for the selector).
     pub fn nome(self) -> &'static str {
         match self {
             Idioma::Portugues => "Português",
@@ -63,22 +63,22 @@ impl Idioma {
     }
 }
 
-// Sem inicializar (testes), fica em portugues.
+// When not initialized (tests), it stays in Portuguese.
 static PORTUGUES: AtomicBool = AtomicBool::new(true);
 
 pub fn pt() -> bool {
     PORTUGUES.load(Ordering::Relaxed)
 }
 
-/// Aplica a escolha do usuario (None = automatico pelo Windows).
-/// VPN_IDIOMA=pt|en força um idioma (capturas de tela da documentacao).
+/// Applies the user's choice (None = automatic from Windows).
+/// VPN_IDIOMA=pt|en forces a language (documentation screenshots).
 pub fn aplicar(escolha: Option<Idioma>) {
     let forcado = std::env::var("VPN_IDIOMA").ok().and_then(|c| Idioma::do_codigo(&c));
     let idioma = forcado.or(escolha).unwrap_or_else(do_windows);
     PORTUGUES.store(idioma == Idioma::Portugues, Ordering::Relaxed);
 }
 
-/// Idioma da interface do Windows.
+/// Windows interface language.
 pub fn do_windows() -> Idioma {
     #[link(name = "kernel32")]
     extern "system" {
@@ -87,8 +87,8 @@ pub fn do_windows() -> Idioma {
     pelo_langid(unsafe { GetUserDefaultUILanguage() })
 }
 
-/// LANGID do Windows -> idioma do app: portugues (Brasil ou Portugal)
-/// usa pt-BR; os demais, ingles.
+/// Windows LANGID -> app language: Portuguese (Brazil or Portugal)
+/// uses pt-BR; all others, English.
 fn pelo_langid(langid: u16) -> Idioma {
     const LANG_PORTUGUESE: u16 = 0x16;
     if langid & 0x3FF == LANG_PORTUGUESE {

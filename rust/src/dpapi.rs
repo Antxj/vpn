@@ -1,7 +1,7 @@
-//! DPAPI (CryptProtectData) + configuracoes persistidas.
+//! DPAPI (CryptProtectData) + persisted settings.
 //!
-//! %APPDATA%/VPN/contas.dat: um JSON criptografado com DPAPI no escopo do
-//! usuario, com as preferencias e a lista de contas.
+//! %APPDATA%/VPN/contas.dat: a JSON encrypted with DPAPI in the user scope,
+//! with the preferences and the list of accounts.
 
 use crate::contas::Conta;
 use serde::{Deserialize, Serialize};
@@ -94,7 +94,7 @@ pub fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
 
 // ------------------------------------------------------------ settings ---
 
-/// Versao atual do formato do arquivo de configuracoes.
+/// Current version of the settings file format.
 pub const VERSAO_SETTINGS: u32 = 2;
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -105,10 +105,10 @@ pub struct Settings {
     pub theme: Option<String>,
     #[serde(default)]
     pub contas: Vec<Conta>,
-    /// Procurar novas versoes automaticamente (ausente = sim).
+    /// Check for new versions automatically (absent = yes).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub atualizacoes: Option<bool>,
-    /// Idioma da interface: "pt" ou "en" (ausente = o do Windows).
+    /// Interface language: "pt" or "en" (absent = the Windows one).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idioma: Option<String>,
 }
@@ -117,7 +117,7 @@ fn appdata() -> PathBuf {
     PathBuf::from(std::env::var("APPDATA").unwrap_or_else(|_| ".".into()))
 }
 
-/// Pasta de dados do aplicativo (configuracoes e logs).
+/// App data folder (settings and logs).
 pub fn app_dir() -> PathBuf {
     appdata().join("VPN")
 }
@@ -146,8 +146,8 @@ pub fn save_settings(settings: &Settings) {
         return;
     };
     let _ = std::fs::create_dir_all(app_dir());
-    // grava em arquivo temporario e renomeia: uma queda no meio da gravacao
-    // nao corrompe as contas ja salvas
+    // write to a temporary file and rename: a crash in the middle of the write
+    // does not corrupt the accounts already saved
     let destino = settings_file();
     let temp = destino.with_extension("dat.tmp");
     if std::fs::write(&temp, enc).is_ok() {
@@ -183,7 +183,7 @@ mod tests {
             s.contas.push(c);
         }
         let json = serde_json::to_vec(&s).unwrap();
-        // passa pelo mesmo caminho do arquivo real (DPAPI ida e volta)
+        // goes through the same path as the real file (DPAPI round trip)
         let volta: Settings =
             serde_json::from_slice(&unprotect(&protect(&json).unwrap()).unwrap()).unwrap();
         assert_eq!(volta.contas.len(), 2);
@@ -194,11 +194,11 @@ mod tests {
 
     #[test]
     fn atualizacao_automatica_ligada_por_padrao() {
-        // arquivos gravados antes da opcao existir nao tem o campo
+        // files written before this option existed do not have the field
         let s: Settings = serde_json::from_str(r#"{"versao":2,"theme":"dark"}"#).unwrap();
         assert!(s.contas.is_empty());
         assert_eq!(s.atualizacoes, None);
-        // desligada, a escolha e gravada
+        // when turned off, the choice is saved
         let s = Settings {
             atualizacoes: Some(false),
             ..Default::default()

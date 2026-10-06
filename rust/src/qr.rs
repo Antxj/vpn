@@ -1,9 +1,9 @@
-//! Leitura de QR Code (rqrr, 100% Rust) e extracao de seed/usuario.
+//! QR code reading (rqrr, pure Rust) and seed/username extraction.
 
 use crate::totp::normalize_seed;
 use percent_encoding::percent_decode_str;
 
-/// Decodifica o primeiro QR legivel da imagem.
+/// Decodes the first readable QR code in the image.
 pub fn decode_qr(img: &image::DynamicImage) -> Option<String> {
     let gray = img.to_luma8();
     let (w, h) = (gray.width() as usize, gray.height() as usize);
@@ -36,7 +36,7 @@ fn param<'a>(url: &'a url::Url, names: &[&str]) -> Option<String> {
         .map(|(_, v)| v.into_owned())
 }
 
-/// Formatos aceitos: otpauth://, URL com parametros, seed base32 crua.
+/// Accepted formats: otpauth://, URL with parameters, raw base32 seed.
 pub fn parse_payload(text: &str) -> QrData {
     let t = text.trim();
     let mut seed_raw = String::new();
@@ -45,7 +45,7 @@ pub fn parse_payload(text: &str) -> QrData {
     if t.to_lowercase().starts_with("otpauth://") {
         if let Ok(u) = url::Url::parse(t) {
             seed_raw = param(&u, &["secret"]).unwrap_or_default();
-            // rotulo: caminho (as vezes host+caminho) percent-decodificado
+            // label: path (sometimes host+path), percent-decoded
             let label = pct(u.path().trim_matches('/'));
             let label = label.trim();
             user = match label.split_once(':') {
@@ -91,7 +91,7 @@ mod tests {
 
     #[test]
     fn otpauth_simples() {
-        // formato comum: label so com o usuario
+        // common format: label with the username only
         let d = parse_payload(&format!("otpauth://totp/usuario.teste?secret={SEED}&issuer=Empresa"));
         assert_eq!(d.seed.as_deref(), Some(SEED));
         assert_eq!(d.user.as_deref(), Some("usuario.teste"));
@@ -123,7 +123,7 @@ mod tests {
             .quiet_zone(true)
             .module_dimensions(4, 4)
             .build();
-        // constroi imagem em tons de cinza a partir do render texto
+        // builds a grayscale image from the text render
         let lines: Vec<&str> = img_str.lines().collect();
         let h = lines.len() as u32;
         let w = lines[0].chars().count() as u32;
@@ -135,7 +135,7 @@ mod tests {
             }
         }
         let dynimg = image::DynamicImage::ImageLuma8(gray);
-        let text = decode_qr(&dynimg).expect("nao decodificou");
+        let text = decode_qr(&dynimg).expect("could not decode");
         assert_eq!(text, url);
         let d = parse_payload(&text);
         assert_eq!(d.user.as_deref(), Some("usuario.teste"));

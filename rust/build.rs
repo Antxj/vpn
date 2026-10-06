@@ -1,18 +1,18 @@
-// Embute icone, manifesto UAC e versao no .exe via app.rc, e o instalador
-// oficial do OpenVPN (assets/openvpn.msi) no binario.
-// Com o toolchain GNU requer windres no PATH (vem no MinGW-w64).
+// Embeds the icon, UAC manifest and version into the .exe via app.rc, and the
+// official OpenVPN installer (assets/openvpn.msi) into the binary.
+// With the GNU toolchain it requires windres on the PATH (ships with MinGW-w64).
 //
-// VPN_DEV_NOUAC=1 usa o manifesto asInvoker (sem pedir admin) -
-// apenas para desenvolvimento/screenshots; a conexao real exige admin.
+// VPN_DEV_NOUAC=1 uses the asInvoker manifest (no admin prompt) -
+// for development/screenshots only; a real connection requires admin.
 //
-// O MSI NAO fica no repositorio (5,6 MB). O build-release.ps1 baixa e
-// confere o SHA256 antes de compilar; sem o arquivo o binario sai sem o
-// instalador embutido (o app cai no aviso com link de download).
+// The MSI is NOT in the repository (5.6 MB). build-release.ps1 downloads it
+// and verifies the SHA256 before building; without the file the binary has
+// no embedded installer (the app falls back to the notice with a download link).
 
 use std::path::{Path, PathBuf};
 
-/// Versao do MSI esperada em assets/openvpn.msi (mantida em sincronia com
-/// o build-release.ps1, que baixa e confere o hash).
+/// MSI version expected in assets/openvpn.msi (kept in sync with
+/// build-release.ps1, which downloads it and verifies the hash).
 const MSI_VERSION: &str = "2.7.6-I001";
 
 fn main() {
@@ -34,19 +34,19 @@ fn main() {
         embed_resource::compile(rc, embed_resource::NONE);
     }
 
-    // include_bytes! precisa de um caminho que sempre exista: quando o MSI
-    // nao foi baixado, gera um arquivo vazio (o app detecta em tempo de
-    // execucao e mantem o comportamento antigo).
+    // include_bytes! needs a path that always exists: when the MSI was not
+    // downloaded, an empty file is generated (the app detects it at run time
+    // and keeps the old behavior).
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     let embedded = out_dir.join("openvpn.msi");
     let source = Path::new("assets/openvpn.msi");
     if source.exists() {
-        std::fs::copy(source, &embedded).expect("falha ao copiar o MSI para OUT_DIR");
+        std::fs::copy(source, &embedded).expect("failed to copy the MSI to OUT_DIR");
     } else {
-        std::fs::write(&embedded, b"").expect("falha ao criar o MSI vazio");
+        std::fs::write(&embedded, b"").expect("failed to create the empty MSI");
         println!(
-            "cargo:warning=assets/openvpn.msi ausente: binario sem instalador \
-             embutido (use build-release.ps1 para o release oficial)"
+            "cargo:warning=assets/openvpn.msi missing: binary without the embedded \
+             installer (use build-release.ps1 for the official release)"
         );
     }
     println!("cargo:rustc-env=VPN_MSI={}", embedded.display());

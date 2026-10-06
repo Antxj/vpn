@@ -1,8 +1,8 @@
-//! VPN - conexoes OpenVPN (uma ou varias ao mesmo tempo) com token TOTP
-//! gerado automaticamente.
+//! VPN - OpenVPN connections (one or several at the same time) with a TOTP
+//! token generated automatically.
 #![windows_subsystem = "windows"]
 
-// primeiro: as macros tr!/trf! precisam estar definidas antes dos modulos
+// first: the tr!/trf! macros must be defined before the modules
 #[macro_use]
 mod i18n;
 mod atualizacao;
@@ -51,22 +51,22 @@ static TRAY_HINT_SHOWN: AtomicBool = AtomicBool::new(false);
 static MAIN_WNDPROC_INSTALLED: AtomicBool = AtomicBool::new(false);
 static ORIGINAL_MAIN_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 static ORIGINAL_MAIN_EXSTYLE: AtomicIsize = AtomicIsize::new(0);
-/// Pedido do menu da bandeja para abrir a janela de atualizacao.
+/// Request from the tray menu to open the update window.
 static ABRIR_ATUALIZACAO: AtomicBool = AtomicBool::new(false);
-/// Esta abertura veio de uma atualizacao feita pelo proprio app.
+/// This start came from an update done by the app itself.
 static APOS_ATUALIZAR: AtomicBool = AtomicBool::new(false);
-/// Contas que estavam ligadas antes da atualizacao (religadas ao abrir).
+/// Accounts that were on before the update (turned back on at start).
 static RECONECTAR: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
 
 const OPENVPN_CANDIDATES: &[&str] = &[
     r"C:\Program Files\OpenVPN\bin\openvpn.exe",
     r"C:\Program Files (x86)\OpenVPN\bin\openvpn.exe",
 ];
-/// Chave que o instalador do OpenVPN grava (pega instalacao fora do
-/// caminho padrao, por exemplo em outro disco).
+/// Key written by the OpenVPN installer (finds installations outside the
+/// default path, e.g. on another drive).
 const OPENVPN_REG_KEY: &str = r"SOFTWARE\OpenVPN";
 
-// ------------------------------------------------------- Win32 (janela) ---
+// -------------------------------------------------------- Win32 (window) ---
 
 const SW_HIDE: i32 = 0;
 const SW_SHOW: i32 = 5;
@@ -164,9 +164,9 @@ struct WndClassW {
     class_name: *const u16,
 }
 
-/// Esconde/mostra a janela via DWM (cloaking). Retorna false se o DWM
-/// recusou - nesse caso quem chama precisa esconder do jeito classico,
-/// senao a janela continuaria visivel.
+/// Hides/shows the window via DWM (cloaking). Returns false if DWM refused -
+/// in that case the caller has to hide it the classic way, otherwise the
+/// window would stay visible.
 unsafe fn set_main_window_cloaked(hwnd: *mut c_void, cloaked: bool) -> bool {
     let value = i32::from(cloaked);
     let hr = DwmSetWindowAttribute(
@@ -201,9 +201,9 @@ unsafe fn set_main_window_taskbar(hwnd: *mut c_void, visible: bool) {
 }
 
 unsafe fn find_own_tray_window() -> *mut c_void {
-    // Classe interna da crate tray-icon (pinada pelo Cargo.lock). Se um dia
-    // ela mudar, a notificacao de balao para de aparecer em silencio - o
-    // resto da bandeja continua funcionando.
+    // Internal class of the tray-icon crate (pinned by Cargo.lock). If it ever
+    // changes, the balloon notification silently stops showing up - the rest
+    // of the tray keeps working.
     let class = single::wide("tray_icon_app");
     let process_id = GetCurrentProcessId();
     let mut hwnd = ptr::null_mut();
@@ -269,9 +269,9 @@ unsafe fn show_tray_notification() -> bool {
     false
 }
 
-/// Janela principal deste processo. Procura pelo titulo E pelo processo:
-/// com um nome generico como "VPN", outro programa poderia ter uma janela
-/// com o mesmo titulo.
+/// Main window of this process. Searches by title AND by process: with a
+/// generic name like "VPN", another program could have a window with the
+/// same title.
 unsafe fn find_main_window() -> *mut c_void {
     let title = single::wide(WINDOW_TITLE);
     let process_id = GetCurrentProcessId();
@@ -289,8 +289,8 @@ unsafe fn find_main_window() -> *mut c_void {
     }
 }
 
-/// Restaura a janela principal direto pela API do Windows.
-/// Funciona mesmo com o loop do egui pausado (janela oculta).
+/// Restores the main window straight through the Windows API.
+/// Works even with the egui loop paused (window hidden).
 pub fn show_main_window() {
     MAIN_WINDOW_VISIBLE.store(true, Ordering::SeqCst);
     unsafe {
@@ -320,8 +320,8 @@ unsafe extern "system" fn main_wnd_proc(
         let cloaked = set_main_window_cloaked(hwnd, true);
         set_main_window_taskbar(hwnd, false);
         if !cloaked {
-            // DWM indisponivel (raro): set_main_window_taskbar termina com
-            // SW_SHOW, entao sem esta linha a janela reapareceria
+            // DWM unavailable (rare): set_main_window_taskbar ends with
+            // SW_SHOW, so without this line the window would reappear
             ShowWindow(hwnd, SW_HIDE);
         }
         MAIN_WINDOW_VISIBLE.store(false, Ordering::SeqCst);
@@ -364,9 +364,9 @@ fn install_main_window_hook() {
     }
 }
 
-// ------------------------------------------------------------ utilidades ---
+// ------------------------------------------------------------- utilities ---
 
-/// Le HKLM\SOFTWARE\OpenVPN\exe_path (gravado pelo instalador oficial).
+/// Reads HKLM\SOFTWARE\OpenVPN\exe_path (written by the official installer).
 fn openvpn_from_registry() -> Option<PathBuf> {
     use windows_sys::Win32::System::Registry::{
         RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RRF_SUBKEY_WOW6432KEY,
@@ -375,7 +375,7 @@ fn openvpn_from_registry() -> Option<PathBuf> {
 
     let key = single::wide(OPENVPN_REG_KEY);
     let value = single::wide("exe_path");
-    // tenta a visao de 64 e a de 32 bits do registro
+    // tries the 64-bit and the 32-bit registry views
     for view in [RRF_SUBKEY_WOW6464KEY, RRF_SUBKEY_WOW6432KEY] {
         let mut buf = [0u16; 512];
         let mut len = (buf.len() * 2) as u32;
@@ -402,8 +402,8 @@ fn openvpn_from_registry() -> Option<PathBuf> {
 }
 
 fn find_openvpn() -> Option<PathBuf> {
-    // VPN_OPENVPN permite apontar um openvpn.exe fora do caminho
-    // padrao (e, com um caminho inexistente, testar o aviso de ausencia)
+    // VPN_OPENVPN points to an openvpn.exe outside the default path (and,
+    // with a non-existent path, tests the missing-OpenVPN notice)
     if let Ok(custom) = std::env::var("VPN_OPENVPN") {
         let p = PathBuf::from(custom);
         return if p.exists() { Some(p) } else { None };
@@ -443,13 +443,13 @@ fn find_default_config() -> Option<PathBuf> {
 }
 
 fn load_icon_rgba(bytes: &[u8]) -> (Vec<u8>, u32, u32) {
-    let img = image::load_from_memory(bytes).expect("icone embutido invalido");
+    let img = image::load_from_memory(bytes).expect("invalid embedded icon");
     let rgba = img.to_rgba8();
     let (w, h) = (rgba.width(), rgba.height());
     (rgba.into_raw(), w, h)
 }
 
-/// Cor dos rotulos de campo (mais legivel que o "weak" padrao do egui).
+/// Color of the field labels (more readable than egui's default "weak").
 fn label_color(dark: bool) -> egui::Color32 {
     if dark {
         egui::Color32::from_gray(185)
@@ -498,7 +498,7 @@ fn report_startup_error(error: &eframe::Error) {
     ));
 }
 
-/// "1234567" bytes -> "1,2 MB" (virgula pt-BR).
+/// "1234567" bytes -> "1,2 MB" (pt-BR decimal comma).
 fn fmt_bytes(bytes: f64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
     let mut v = bytes.max(0.0);
@@ -511,7 +511,7 @@ fn fmt_bytes(bytes: f64) -> String {
         format!("{} {}", v as u64, UNITS[unit])
     } else {
         let texto = format!("{v:.1} {}", UNITS[unit]);
-        // virgula decimal so em portugues
+        // decimal comma only in Portuguese
         if i18n::pt() {
             texto.replace('.', ",")
         } else {
@@ -555,7 +555,7 @@ fn apply_style(ctx: &egui::Context, dark: bool) {
     ctx.set_style(style);
 }
 
-// ------------------------------- bandeja (so na thread principal/Win32) ---
+// --------------------------------- tray (main/Win32 thread only) ---
 
 #[derive(Clone)]
 enum AcaoMenu {
@@ -566,17 +566,17 @@ enum AcaoMenu {
     Sair,
 }
 
-/// Acao de cada item do menu da bandeja. O menu e refeito quando as contas
-/// mudam; o handler (que roda fora do loop do egui) consulta esta tabela.
+/// Action of each tray menu item. The menu is rebuilt when the accounts
+/// change; the handler (which runs outside the egui loop) looks up this table.
 static MENU_ACOES: Mutex<Vec<(MenuId, AcaoMenu)>> = Mutex::new(Vec::new());
 
 struct TrayUi {
     tray: TrayIcon,
-    icons: [tray_icon::Icon; 3], // cinza, ambar, verde
-    /// Item marcavel de cada conta, para refletir conectada/desconectada.
+    icons: [tray_icon::Icon; 3], // gray, amber, green
+    /// Checkable item of each account, to reflect connected/disconnected.
     itens: Vec<(String, CheckMenuItem)>,
-    /// (id, nome) das contas, versao nova oferecida e idioma do menu atual;
-    /// None = menu ainda nao montado.
+    /// (id, name) of the accounts, new version offered and language of the
+    /// current menu; None = menu not built yet.
     assinatura: Option<(Vec<(String, String)>, Option<String>, bool)>,
     last_icon: usize,
     last_tip: String,
@@ -629,15 +629,15 @@ fn montar_menu(
     (menu, itens, acoes)
 }
 
-/// Conta "ligada" para efeito de toggle/marcacao: conexao em andamento que
-/// nao esta sendo encerrada.
+/// Account "on" for toggle/check purposes: connection in progress that is
+/// not being shut down.
 fn conta_ligada(id: &str) -> bool {
     motor::get().ativa(id) && estado::obter(id).situacao != Situacao::Desconectando
 }
 
-/// Atualiza icone, tooltip e menu da bandeja a partir do estado compartilhado.
-/// Roda na thread principal: chamada pelo App e pelo timer Win32 (que
-/// funciona com a janela oculta).
+/// Updates the tray icon, tooltip and menu from the shared state.
+/// Runs on the main thread: called by the App and by the Win32 timer (which
+/// works with the window hidden).
 fn apply_tray_state() {
     let nomes = motor::get().nomes();
     let versao_nova = atualizacao::disponivel();
@@ -666,7 +666,7 @@ fn apply_tray_state() {
             Agregado::Transicao => 1,
             Agregado::Nenhuma => 0,
         };
-        // limite do Windows para o tooltip da bandeja: 127 caracteres
+        // Windows limit for the tray tooltip: 127 characters
         let tip: String = format!("{APP_TITLE} - {}", linhas.join("\n"))
             .chars()
             .take(127)
@@ -696,8 +696,8 @@ unsafe extern "system" fn tick_wnd_proc(
     DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
-/// Janela invisivel com timer de 1s: mantem a bandeja (icone/tooltip/menu)
-/// atualizada mesmo quando o loop do egui esta pausado (janela oculta).
+/// Invisible window with a 1 s timer: keeps the tray (icon/tooltip/menu)
+/// up to date even when the egui loop is paused (window hidden).
 fn create_tick_window() {
     let class_name: &'static [u16] = Box::leak(single::wide("VpnAppTick").into_boxed_slice());
     unsafe {
@@ -736,8 +736,8 @@ fn create_tick_window() {
     }
 }
 
-/// Liga ou desliga uma conta. Usada pela interface e pelo menu da bandeja.
-/// Pede confirmacao quando duas conexoes disputariam a rota padrao.
+/// Turns an account on or off. Used by the UI and by the tray menu.
+/// Asks for confirmation when two connections would fight over the default route.
 fn alternar_conta(id: &str) -> Result<(), ErroConexao> {
     let m = motor::get();
     if m.ativa(id) {
@@ -784,16 +784,16 @@ fn install_tray_handlers() {
             }
             Some(AcaoMenu::Alternar(id)) => {
                 if let Err(e) = alternar_conta(&id) {
-                    // sem a janela nao da para oferecer a instalacao: abre-a,
-                    // onde o aviso amarelo tem o botao "Instalar agora"
+                    // without the window the installation cannot be offered: open it,
+                    // where the yellow notice has the "Install now" button
                     show_main_window();
                     error_box(&e.mensagem());
                 }
             }
             Some(AcaoMenu::DesconectarTodas) => motor::get().desconectar_todas(),
             Some(AcaoMenu::Sair) => {
-                // Sair com garantia: desconecta (ate 15s) e encerra o
-                // processo, sem depender do loop do egui estar acordado.
+                // Exit for sure: disconnects (up to 15 s) and ends the process,
+                // without depending on the egui loop being awake.
                 std::thread::spawn(|| motor::get().encerrar());
             }
             None => {}
@@ -811,16 +811,16 @@ fn install_tray_handlers() {
     }));
 }
 
-/// Mostra um erro sem travar quem chamou (threads de conexao).
+/// Shows an error without blocking the caller (connection threads).
 pub fn error_box_async(msg: String) {
     if cfg!(test) {
-        estado::log("", msg); // nada de janelas modais durante os testes
+        estado::log("", msg); // no modal windows during tests
         return;
     }
     std::thread::spawn(move || error_box(&msg));
 }
 
-/// Toggle (interruptor) desenhado: ligado = azul.
+/// Drawn toggle switch: on = blue.
 fn toggle(ui: &mut egui::Ui, ligado: bool, habilitado: bool) -> egui::Response {
     let tamanho = egui::vec2(44.0, 24.0);
     let sentido = if habilitado { egui::Sense::click() } else { egui::Sense::hover() };
@@ -851,7 +851,7 @@ fn toggle(ui: &mut egui::Ui, ligado: bool, habilitado: bool) -> egui::Response {
     }
 }
 
-/// Tipo de tunel da conta, para o cartao: (texto curto, explicacao).
+/// Account tunnel type, for the card: (short text, explanation).
 fn tipo_de_tunel(conta: &Conta) -> Option<(&'static str, &'static str)> {
     conta.tunel_completo().map(|completo| {
         if completo {
@@ -890,7 +890,7 @@ fn rotulo(ui: &mut egui::Ui, texto: &str, dark: bool) {
     ui.label(egui::RichText::new(texto).small().color(label_color(dark)));
 }
 
-// -------------------------------------------------------------------- app ---
+// --------------------------------------------------------------------- app ---
 
 #[derive(PartialEq)]
 enum Tela {
@@ -898,7 +898,7 @@ enum Tela {
     Contas,
 }
 
-/// Conta sendo criada ou editada na tela de contas.
+/// Account being created or edited on the accounts screen.
 struct Editor {
     conta: Conta,
     nova: bool,
@@ -932,7 +932,7 @@ impl App {
 
         single::spawn_show_listener();
 
-        // ---- bandeja ----
+        // ---- tray ----
         let (g, gw, gh) = load_icon_rgba(include_bytes!("../assets/gray_32.png"));
         let (w_, ww, wh) = load_icon_rgba(include_bytes!("../assets/warn_32.png"));
         let (o, ow, oh) = load_icon_rgba(include_bytes!("../assets/ok_32.png"));
@@ -946,7 +946,7 @@ impl App {
             .with_tooltip(format!("{APP_TITLE} - {}", tr!("Desconectado", "Disconnected")))
             .with_icon(icon_gray.clone())
             .build()
-            .expect("falha ao criar o icone da bandeja");
+            .expect("failed to create the tray icon");
         install_tray_handlers();
 
         TRAY_UI.with(|cell| {
@@ -963,8 +963,8 @@ impl App {
         create_tick_window();
 
         let (install_tx, install_rx) = std::sync::mpsc::channel();
-        // VPN_CAPTURA: so para as capturas de tela da documentacao, feitas com
-        // o build de desenvolvimento (que roda sem elevacao de proposito)
+        // VPN_CAPTURA: only for the documentation screenshots, taken with the
+        // development build (which deliberately runs without elevation)
         let admin = motor::eh_administrador() || std::env::var_os("VPN_CAPTURA").is_some();
         if !admin {
             estado::log(
@@ -985,7 +985,7 @@ impl App {
                 ),
             );
         }
-        // religa as contas que estavam conectadas antes da atualizacao
+        // turn back on the accounts that were connected before the update
         for id in RECONECTAR.get().into_iter().flatten() {
             if let Err(e) = m.conectar(id, find_openvpn()) {
                 let nome = m.conta(id).map(|c| c.nome_exibicao().to_string()).unwrap_or_default();
@@ -1001,7 +1001,7 @@ impl App {
 
         let mut app = Self {
             dark,
-            // sem contas, abre direto no cadastro
+            // no accounts: open straight on the sign-up screen
             tela: if m.contas().is_empty() { Tela::Contas } else { Tela::Inicio },
             editor: None,
             qr_open: false,
@@ -1013,8 +1013,8 @@ impl App {
             install_rx,
             install_tx,
         };
-        // VPN_CAPTURA=contas|editar|nova abre direto naquela tela (capturas
-        // de tela da documentacao e conferencia visual de cada tela)
+        // VPN_CAPTURA=contas|editar|nova opens straight on that screen (documentation
+        // screenshots and visual check of each screen)
         match std::env::var("VPN_CAPTURA").as_deref() {
             Ok("contas") => app.tela = Tela::Contas,
             Ok("editar") => {
@@ -1029,7 +1029,7 @@ impl App {
         app
     }
 
-    /// Instala o OpenVPN embutido (silencioso, em segundo plano).
+    /// Installs the embedded OpenVPN (silently, in the background).
     fn start_openvpn_install(&mut self) {
         if self.installing || !installer::is_available() {
             return;
@@ -1046,7 +1046,7 @@ impl App {
         installer::install_in_background(self.install_tx.clone(), eframe_ctx());
     }
 
-    /// Mostra o erro de conexao; quando falta o OpenVPN, oferece instalar.
+    /// Shows the connection error; when OpenVPN is missing, offers to install it.
     fn tratar_erro(&mut self, erro: ErroConexao) {
         if erro != ErroConexao::OpenVpnAusente {
             error_box(&erro.mensagem());
@@ -1158,7 +1158,7 @@ impl App {
         }
     }
 
-    // ------------------------------------------------------------ QR code --
+    // -------------------------------------------------------------- QR code --
 
     fn import_qr_image(&mut self, img: image::DynamicImage) {
         let Some(text) = qr::decode_qr(&img) else {
@@ -1232,7 +1232,7 @@ impl App {
         }
     }
 
-    // ------------------------------------------------------------- telas --
+    // --------------------------------------------------------------- screens --
 
     fn banners(&mut self, ui: &mut egui::Ui) {
         let (bg, fg) = if self.dark {
@@ -1354,7 +1354,7 @@ impl App {
         } else {
             egui::Color32::from_rgb(0xff, 0xff, 0xff)
         };
-        // a lista ocupa o espaco de cima e o log fica ancorado no rodape
+        // the list takes the top space and the log is anchored at the bottom
         let varias_ativas = contas.iter().filter(|c| m.ativa(&c.id)).count() > 1;
         let altura_log = 150.0 + if varias_ativas { 44.0 } else { 0.0 };
         let altura_lista = (ui.available_height() - altura_log).max(120.0);
@@ -1375,8 +1375,8 @@ impl App {
                         .show(ui, |ui| {
                             ui.set_width(ui.available_width());
                             ui.horizontal(|ui| {
-                                // o texto nunca invade o espaco do interruptor:
-                                // o que nao couber termina em reticencias
+                                // the text never invades the toggle's space:
+                                // whatever does not fit ends with an ellipsis
                                 let largura_texto = (ui.available_width() - 64.0).max(80.0);
                                 let fraco = label_color(self.dark);
                                 ui.vertical(|ui| {
@@ -1558,7 +1558,7 @@ impl App {
                         .show(ui, |ui| {
                             ui.set_width(ui.available_width());
                             ui.horizontal(|ui| {
-                                // nome na linha dos botoes, sem invadir o espaco deles
+                                // name on the buttons row, without invading their space
                                 let largura_nome = (ui.available_width() - 200.0).max(80.0);
                                 ui.vertical(|ui| {
                                     ui.set_max_width(largura_nome);
@@ -1599,7 +1599,7 @@ impl App {
                                     },
                                 );
                             });
-                            // arquivo e autenticacao ganham a largura toda
+                            // file and authentication get the full width
                             let arquivo = conta.arquivo();
                             let mut detalhes = format!(
                                 "{}  ·  {}",
@@ -1667,7 +1667,7 @@ impl App {
         }
     }
 
-    /// Idioma, versao e atualizacoes: discreto, no rodape da tela de contas.
+    /// Language, version and updates: unobtrusive, at the bottom of the accounts screen.
     fn rodape_atualizacao(&mut self, ui: &mut egui::Ui) {
         use atualizacao::Estado;
         use i18n::Idioma;
@@ -1765,7 +1765,7 @@ impl App {
             | Estado::Baixando(v, _)
             | Estado::FalhaInstalacao(v, _)
             | Estado::Reiniciando(v) => v.clone(),
-            // VPN_CAPTURA=atualizacao abre antes de a verificacao terminar
+            // VPN_CAPTURA=atualizacao opens before the check finishes
             _ => return,
         };
         let dark = self.dark;
@@ -1995,7 +1995,7 @@ impl App {
                         );
                         ui.checkbox(&mut ed.mostrar_seed, tr!("mostrar", "show"));
                     });
-                    // previa do token: confere com o celular antes de salvar
+                    // token preview: compare with the phone before saving
                     if let Some(seed) = totp::normalize_seed(&ed.conta.seed) {
                         if let Some(token) = totp::totp_now(&seed) {
                             ui.label(
@@ -2126,7 +2126,7 @@ impl App {
     }
 }
 
-/// Contexto global do egui para as threads (preenchido na criacao do App).
+/// Global egui context for the threads (filled in when the App is created).
 static EGUI_CTX: std::sync::OnceLock<egui::Context> = std::sync::OnceLock::new();
 fn eframe_ctx() -> egui::Context {
     EGUI_CTX.get().cloned().unwrap_or_default()
@@ -2147,11 +2147,11 @@ impl eframe::App for App {
                     .inner_margin(egui::Margin::symmetric(18.0, 14.0)),
             )
             .show(ctx, |ui| {
-                // ---------- cabecalho ----------
+                // ---------- header ----------
                 ui.horizontal(|ui| {
                     ui.heading(egui::RichText::new(APP_TITLE).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // botao de tema: mostra o tema para o qual vai trocar
+                        // theme button: shows the theme it will switch to
                         let icon = if self.dark { "☀" } else { "🌙" };
                         let btn = egui::Button::new(egui::RichText::new(icon).size(18.0))
                             .min_size(egui::vec2(40.0, 32.0));
@@ -2176,7 +2176,7 @@ impl eframe::App for App {
                                 self.tela = Tela::Contas;
                             }
                         }
-                        // versao nova: so um link discreto no cabecalho
+                        // new version: just an unobtrusive link in the header
                         if let Some(v) = atualizacao::disponivel() {
                             let texto = egui::RichText::new(trf!(
                                 "Versão {v} disponível",
@@ -2212,7 +2212,7 @@ impl eframe::App for App {
         }
 
         if MAIN_WINDOW_VISIBLE.load(Ordering::SeqCst) {
-            // a previa do token muda a cada segundo
+            // the token preview changes every second
             let intervalo = if self.editor.is_some() {
                 Duration::from_secs(1)
             } else {
@@ -2226,8 +2226,8 @@ impl eframe::App for App {
 }
 
 fn main() -> eframe::Result<()> {
-    // depois de "Atualizar agora", a versao anterior abre esta passando o
-    // proprio PID e as contas que estavam ligadas
+    // after "Update now", the previous version opens this one passing its own
+    // PID and the accounts that were on
     let args: Vec<String> = std::env::args().collect();
     let valor = |nome: &str| {
         args.iter()
@@ -2236,7 +2236,7 @@ fn main() -> eframe::Result<()> {
             .cloned()
     };
     if let Some(pid) = valor(atualizacao::ARG_APOS_ATUALIZAR).and_then(|p| p.parse().ok()) {
-        // a anterior ainda desconecta as VPNs (ate 15 s) e segura a instancia
+        // the previous one is still disconnecting the VPNs (up to 15 s) and holds the instance
         atualizacao::aguardar_processo(pid, Duration::from_secs(30));
         APOS_ATUALIZAR.store(true, Ordering::SeqCst);
     }
@@ -2250,7 +2250,7 @@ fn main() -> eframe::Result<()> {
     }
 
     if !single::acquire_or_signal() {
-        return Ok(()); // outra instancia ja esta rodando e foi avisada
+        return Ok(()); // another instance is already running and was notified
     }
     atualizacao::limpar_restos();
     i18n::aplicar(motor::get().idioma());
@@ -2268,17 +2268,16 @@ fn main() -> eframe::Result<()> {
             .with_resizable(false)
             .with_icon(std::sync::Arc::new(icon))
             .with_title(WINDOW_TITLE),
-        // NAO troque para OpenGL/glow: em maquinas virtuais e sessoes de
-        // area de trabalho remota o Windows so oferece OpenGL 1.1 por
-        // software e o app nem abre. O DX12 sempre encontra adaptador -
-        // quando nao ha GPU real, cai no WARP (Microsoft Basic Render
-        // Driver), que e compativel com DirectX 12. Foi essa troca que
-        // fez o aplicativo abrir nas VMs.
+        // DO NOT switch to OpenGL/glow: in virtual machines and remote desktop
+        // sessions Windows only offers software OpenGL 1.1 and the app does not
+        // even open. DX12 always finds an adapter - when there is no real GPU it
+        // falls back to WARP (Microsoft Basic Render Driver), which supports
+        // DirectX 12. That switch is what made the app open in VMs.
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
             supported_backends: eframe::wgpu::Backends::DX12,
-            // interface estatica: nao ha motivo para acordar a GPU dedicada
-            // (economiza bateria e memoria em notebooks hibridos)
+            // static interface: no reason to wake up the dedicated GPU
+            // (saves battery and memory on hybrid laptops)
             power_preference: eframe::wgpu::PowerPreference::LowPower,
             ..Default::default()
         },
@@ -2311,12 +2310,12 @@ mod tests {
         assert_eq!(fmt_rate(1024.0 * 120.0), "120,0 KB/s");
     }
 
-    /// Todo simbolo mostrado na interface PRECISA existir nas fontes do
-    /// egui, senao vira "caixinha". Este teste trava a lista aprovada.
+    /// Every symbol shown in the UI MUST exist in egui's fonts, otherwise it
+    /// becomes a "box". This test locks the approved list.
     #[test]
     fn glifos_presentes_nas_fontes_do_egui() {
         let defs = egui::FontDefinitions::default();
-        // o que importa e a familia Proporcional (usada nos textos da UI)
+        // what matters is the Proportional family (used in the UI texts)
         let proportional = &defs.families[&egui::FontFamily::Proportional];
         let covered = |c: char| {
             proportional.iter().any(|name| {
@@ -2327,9 +2326,9 @@ mod tests {
                 })
             })
         };
-        // simbolos efetivamente usados na interface:
+        // symbols actually used in the UI:
         for c in ['\u{2022}', '·', '☀', '🌙', '\u{2B07}', '\u{2B06}', '—'] {
-            assert!(covered(c), "fonte proporcional do egui nao tem {c:?}");
+            assert!(covered(c), "egui proportional font lacks {c:?}");
         }
     }
 
@@ -2362,11 +2361,11 @@ mod tests {
 
         assert!(!acoes.iter().any(|(_, a)| matches!(a, AcaoMenu::Atualizar)));
 
-        // uma conta so: sem "Desconectar todas"
+        // a single account: no "Disconnect all"
         let (_m, _i, acoes) = montar_menu(&contas[..1], None);
         assert!(!acoes.iter().any(|(_, a)| matches!(a, AcaoMenu::DesconectarTodas)));
 
-        // versao nova publicada: item para atualizar
+        // new version published: item to update
         let (_m, _i, acoes) = montar_menu(&contas, Some("1.0.1"));
         assert!(acoes.iter().any(|(_, a)| matches!(a, AcaoMenu::Atualizar)));
     }

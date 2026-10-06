@@ -1,28 +1,28 @@
-//! Instalacao automatica do OpenVPN Community a partir do MSI oficial
-//! embutido no executavel.
+//! Automatic installation of OpenVPN Community from the official MSI
+//! embedded in the executable.
 //!
-//! O MSI e o pacote assinado pela OpenVPN Inc., redistribuido sem
-//! modificacao (ver THIRD-PARTY-LICENSES.txt). A instalacao e silenciosa e
-//! escolhe um conjunto minimo de componentes: nucleo, servico e driver
-//! TAP-Windows6 - de proposito SEM a interface grafica do OpenVPN, que
-//! colocaria um segundo icone de VPN na bandeja e confundiria o usuario.
+//! The MSI is the package signed by OpenVPN Inc., redistributed without
+//! modification (see THIRD-PARTY-LICENSES.txt). The installation is silent and
+//! picks a minimal set of components: core, service and the TAP-Windows6
+//! driver - deliberately WITHOUT the OpenVPN GUI, which would add a second
+//! VPN icon to the tray and confuse the user.
 
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::Sender;
 
-/// MSI embutido (vazio quando a compilacao nao encontrou assets/openvpn.msi).
+/// Embedded MSI (empty when the build did not find assets/openvpn.msi).
 static MSI: &[u8] = include_bytes!(env!("VPN_MSI"));
 pub const MSI_VERSION: &str = env!("VPN_MSI_VERSION");
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-/// Componentes instalados (nomes conferidos na tabela Feature do MSI).
+/// Installed components (names checked against the MSI Feature table).
 const FEATURES: &str = "ADDLOCAL=OpenVPN,OpenVPN.Service,Drivers,Drivers.TAPWindows6";
-/// msiexec: sucesso, porem o Windows pede reinicializacao.
+/// msiexec: success, but Windows asks for a restart.
 const ERROR_SUCCESS_REBOOT_REQUIRED: i32 = 3010;
 
 pub enum Event {
-    /// Terminou: Ok(reiniciar_recomendado) ou Err(mensagem).
+    /// Finished: Ok(restart_recommended) or Err(message).
     Done(Result<bool, String>),
 }
 
@@ -34,8 +34,8 @@ fn log_path() -> PathBuf {
     crate::dpapi::app_dir().join("openvpn-install.log")
 }
 
-/// Instala o OpenVPN em segundo plano. Requer privilegio de administrador
-/// (o app inteiro ja roda elevado pelo manifesto).
+/// Installs OpenVPN in the background. Requires administrator privileges
+/// (the whole app already runs elevated through the manifest).
 pub fn install_in_background(tx: Sender<Event>, ctx: eframe::egui::Context) {
     std::thread::spawn(move || {
         let result = install();
@@ -84,36 +84,36 @@ fn install() -> Result<bool, String> {
     }
 }
 
-// creation_flags vem da extensao de Command no Windows
+// creation_flags comes from the Windows extension of Command
 use std::os::windows::process::CommandExt;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// O MSI embutido precisa ser um pacote MSI de verdade (ou estar
-    /// ausente, no build de desenvolvimento) - nunca lixo.
+    /// The embedded MSI must be a real MSI package (or be absent, in the
+    /// development build) - never garbage.
     #[test]
     fn msi_embutido_e_valido_ou_ausente() {
         if MSI.is_empty() {
-            return; // build sem o instalador: aceito em desenvolvimento
+            return; // build without the installer: accepted in development
         }
-        // MSI e um arquivo OLE2: assinatura D0 CF 11 E0 A1 B1 1A E1
+        // an MSI is an OLE2 file: signature D0 CF 11 E0 A1 B1 1A E1
         assert_eq!(
             &MSI[..8],
             &[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1],
             "o arquivo embutido nao parece um MSI"
         );
-        assert!(MSI.len() > 1_000_000, "MSI embutido pequeno demais");
+        assert!(MSI.len() > 1_000_000, "embedded MSI too small");
         assert!(!MSI_VERSION.is_empty());
     }
 
     #[test]
     fn features_cobrem_nucleo_e_driver() {
-        // sem driver de rede o OpenVPN instala mas nao conecta
+        // without a network driver OpenVPN installs but does not connect
         assert!(FEATURES.contains("Drivers.TAPWindows6"));
         assert!(FEATURES.contains("OpenVPN.Service"));
-        // a interface grafica do OpenVPN nao deve ser instalada
+        // the OpenVPN GUI must not be installed
         assert!(!FEATURES.contains("OpenVPN.GUI"));
     }
 }
