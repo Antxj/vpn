@@ -19,15 +19,15 @@ Written in **Rust**: a single ~12 MB native executable that already ships the
 official OpenVPN installer — nothing needs to be installed beforehand.
 
 The interface is available in English and Brazilian Portuguese, following
-the Windows language (it can be set under **Accounts** › Language).
+the Windows language (it can be set under **Settings** ⚙ › Language).
 
 | Dark theme | Light theme |
 |---|---|
 | ![Dark theme](docs/en/home_dark.png) | ![Light theme](docs/en/home_light.png) |
 
-| Accounts | Edit account |
-|---|---|
-| ![Account list](docs/en/accounts.png) | ![Account editor](docs/en/editor.png) |
+| Accounts | Edit account | Settings |
+|---|---|---|
+| ![Account list](docs/en/accounts.png) | ![Account editor](docs/en/editor.png) | ![Settings](docs/en/settings.png) |
 
 If OpenVPN Community is not installed, the app shows a notice and installs it
 silently from the embedded official installer (the check runs every 5
@@ -78,7 +78,10 @@ without user intervention.
   the VPN, the app warns before connecting the second one — only the last one
   would work as the default route
 - **English or Portuguese**: follows the Windows language; either one can be
-  set under **Accounts** › Language
+  set under **Settings** ⚙ › Language
+- **Settings** (⚙ button): start with Windows, start minimized in the tray,
+  which accounts connect when the app opens, theme, language and update
+  checks — all in one place, with the same switches as the home screen
 - **QR code import**: the same QR code used to enroll Google Authenticator
   fills in the username and seed (image file or pasted screenshot)
 - **Single instance**: opening the exe again just restores the existing
@@ -156,6 +159,7 @@ Structure:
 - [`service.rs`](rust/src/service.rs) — client of the OpenVPN interactive
   service (named pipe protocol) and user authorization
 - [`elevate.rs`](rust/src/elevate.rs) — administrator rights on demand (UAC)
+- [`startup.rs`](rust/src/startup.rs) — "Start with Windows" (user Run key)
 - [`state.rs`](rust/src/state.rs) — shared per-account state and log;
   written by the connections, read by the interface and the tray
 - [`accounts.rs`](rust/src/accounts.rs) — account model, authentication and
@@ -177,7 +181,7 @@ Useful variables for development and testing:
 | `VPN_OPENVPN` | points to an alternative `openvpn.exe` (non-existent = forces the notice) |
 | `VPN_INSTANCE` | separates a test instance from the everyday app |
 | `VPN_SKIP_HINT` | does not show the first-time tray notification |
-| `VPN_SCREENSHOT` | documentation screenshots: with `accounts`, `edit`, `new` or `update`, opens directly on that screen |
+| `VPN_SCREENSHOT` | documentation screenshots: with `accounts`, `edit`, `new`, `settings` or `update`, opens directly on that screen |
 | `VPN_LANGUAGE` | forces `pt` or `en` (screenshots) |
 | `VPN_UPDATE_URL` | queries another address instead of the GitHub API (update tests) |
 | `APPDATA` | redirect to a test folder so the real accounts are not touched |
@@ -189,7 +193,7 @@ There is no dedicated server: the app queries
 then once a day. That endpoint ignores pre-releases, so a version only reaches
 users when it is published as final. The request sends no user data (GitHub
 only sees the IP address and the app version in the User-Agent) and can be
-turned off under **Accounts** › "Check for new versions automatically".
+turned off under **Settings** ⚙ › "Check for new versions".
 
 Nothing opens by itself: when there is a new version, only the blue
 "Version X available" link appears at the top of the window (plus an item in
@@ -284,8 +288,8 @@ The app does not collect or send user data. Its only network connections are:
   `.ovpn` file);
 - the **check for new versions** on GitHub (described in
   [Updates](#updates)), which sends no user data — GitHub only sees the IP
-  address and the app version — and can be turned off under **Accounts** ›
-  "Check for new versions automatically". The
+  address and the app version — and can be turned off under **Settings** ⚙ ›
+  "Check for new versions". The
   [GitHub privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)
   applies.
 
@@ -294,7 +298,9 @@ Accounts, passwords and seeds stay on the computer only, encrypted (see
 
 ## Uninstalling
 
-The app has no installer: exit it (tray › **Exit**) and delete `VPN.exe`. To
+The app has no installer. If **Start with Windows** is on, turn it off first
+(**Settings** ⚙), so Windows does not keep an entry pointing to a deleted
+file. Then exit the app (tray › **Exit**) and delete `VPN.exe`. To
 also remove the saved accounts and logs, delete the `%APPDATA%\VPN` folder.
 If OpenVPN Community was installed by the app, it can be removed under
 **Windows Settings › Apps › Installed apps › OpenVPN**.

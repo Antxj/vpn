@@ -111,6 +111,9 @@ pub struct Settings {
     /// Interface language: "pt" or "en" (absent = the Windows one).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idioma: Option<String>,
+    /// When started by Windows at logon, stay in the tray (absent = yes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub iniciar_minimizado: Option<bool>,
 }
 
 fn appdata() -> PathBuf {

@@ -16,6 +16,7 @@ mod qr;
 mod routes;
 mod service;
 mod single;
+mod startup;
 mod totp;
 mod vpn;
 
@@ -57,6 +58,8 @@ static ORIGINAL_MAIN_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 static ORIGINAL_MAIN_EXSTYLE: AtomicIsize = AtomicIsize::new(0);
 /// Request from the tray menu to open the update window.
 static ABRIR_ATUALIZACAO: AtomicBool = AtomicBool::new(false);
+/// Started by Windows with "start minimized": hide the window on the first frame.
+static INICIAR_OCULTO: AtomicBool = AtomicBool::new(false);
 /// This start came from an update done by the app itself.
 static APOS_ATUALIZAR: AtomicBool = AtomicBool::new(false);
 /// Accounts that were on before the update (turned back on at start).
@@ -300,7 +303,11 @@ pub fn show_main_window() {
     unsafe {
         let hwnd = find_main_window();
         if !hwnd.is_null() {
-            set_main_window_taskbar(hwnd, true);
+            // started hidden (tray only): the hook that saves the original
+            // style is not installed yet, and there is nothing to restore
+            if MAIN_WNDPROC_INSTALLED.load(Ordering::SeqCst) {
+                set_main_window_taskbar(hwnd, true);
+            }
             let _ = set_main_window_cloaked(hwnd, false);
             ShowWindow(hwnd, SW_RESTORE);
             ShowWindow(hwnd, SW_SHOW);
@@ -314,6 +321,19 @@ pub fn show_main_window() {
     }
 }
 
+/// Hides the main window to the tray (no taskbar button). Also used when
+/// Windows starts the app minimized.
+unsafe fn esconder_janela(hwnd: *mut c_void) {
+    let cloaked = set_main_window_cloaked(hwnd, true);
+    set_main_window_taskbar(hwnd, false);
+    if !cloaked {
+        // DWM unavailable (rare): set_main_window_taskbar ends with
+        // SW_SHOW, so without this line the window would reappear
+        ShowWindow(hwnd, SW_HIDE);
+    }
+    MAIN_WINDOW_VISIBLE.store(false, Ordering::SeqCst);
+}
+
 unsafe extern "system" fn main_wnd_proc(
     hwnd: *mut c_void,
     msg: u32,
@@ -321,14 +341,7 @@ unsafe extern "system" fn main_wnd_proc(
     lparam: isize,
 ) -> isize {
     if msg == WM_CLOSE || (msg == WM_SYSCOMMAND && wparam & 0xFFF0 == SC_MINIMIZE) {
-        let cloaked = set_main_window_cloaked(hwnd, true);
-        set_main_window_taskbar(hwnd, false);
-        if !cloaked {
-            // DWM unavailable (rare): set_main_window_taskbar ends with
-            // SW_SHOW, so without this line the window would reappear
-            ShowWindow(hwnd, SW_HIDE);
-        }
-        MAIN_WINDOW_VISIBLE.store(false, Ordering::SeqCst);
+        esconder_janela(hwnd);
         if !TRAY_HINT_SHOWN.load(Ordering::SeqCst)
             && std::env::var_os("VPN_SKIP_HINT").is_none()
         {
@@ -841,7 +854,7 @@ fn toggle(ui: &mut egui::Ui, ligado: bool, habilitado: bool) -> egui::Response {
         } else {
             egui::Color32::from_gray(190)
         };
-        let fundo = if habilitado { fundo } else { fundo.gamma_multiply(0.5) };
+        let fundo = if habilitado { fundo } else { fundo.gamma_multiply(0.35) };
         let raio = rect.height() / 2.0;
         ui.painter().rect_filled(rect, raio, fundo);
         let x = egui::lerp((rect.left() + raio)..=(rect.right() - raio), anim);
@@ -907,6 +920,66 @@ fn cor_situacao(s: Situacao, padrao: egui::Color32) -> egui::Color32 {
     }
 }
 
+/// Background of the cards (accounts, settings sections).
+fn fundo_cartao(dark: bool) -> egui::Color32 {
+    if dark {
+        egui::Color32::from_rgb(0x26, 0x29, 0x31)
+    } else {
+        egui::Color32::from_rgb(0xff, 0xff, 0xff)
+    }
+}
+
+/// Settings section: small title above a card.
+fn secao(ui: &mut egui::Ui, titulo: &str, dark: bool, conteudo: impl FnOnce(&mut egui::Ui)) {
+    ui.add_space(8.0);
+    rotulo(ui, titulo, dark);
+    egui::Frame::none()
+        .fill(fundo_cartao(dark))
+        .rounding(8.0)
+        .inner_margin(egui::Margin::symmetric(12.0, 10.0))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            conteudo(ui);
+        });
+}
+
+/// Settings row: title and description on the left, switch on the right.
+/// Returns true when the user flipped the switch.
+fn linha_toggle(
+    ui: &mut egui::Ui,
+    dark: bool,
+    titulo: &str,
+    descricao: &str,
+    valor: &mut bool,
+    habilitado: bool,
+) -> bool {
+    let mut mudou = false;
+    ui.horizontal(|ui| {
+        let largura = (ui.available_width() - 64.0).max(80.0);
+        ui.vertical(|ui| {
+            ui.set_max_width(largura);
+            let cor = if habilitado {
+                ui.visuals().strong_text_color()
+            } else if dark {
+                egui::Color32::from_gray(110)
+            } else {
+                egui::Color32::from_gray(165)
+            };
+            ui.add(egui::Label::new(egui::RichText::new(titulo).color(cor)).truncate());
+            if !descricao.is_empty() {
+                ui.label(egui::RichText::new(descricao).small().color(label_color(dark)));
+            }
+        });
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if toggle(ui, *valor, habilitado).clicked() {
+                *valor = !*valor;
+                mudou = true;
+            }
+        });
+    });
+    mudou
+}
+
 fn rotulo(ui: &mut egui::Ui, texto: &str, dark: bool) {
     ui.label(egui::RichText::new(texto).small().color(label_color(dark)));
 }
@@ -917,6 +990,7 @@ fn rotulo(ui: &mut egui::Ui, texto: &str, dark: bool) {
 enum Tela {
     Inicio,
     Contas,
+    Configuracoes,
 }
 
 /// Account being created or edited on the accounts screen.
@@ -982,6 +1056,17 @@ impl App {
         apply_tray_state();
         create_tick_window();
 
+        if INICIAR_OCULTO.load(Ordering::SeqCst) {
+            // cloaked before the first paint, so the window never flashes;
+            // the rest of the hiding happens on the first frame
+            unsafe {
+                let hwnd = find_main_window();
+                if !hwnd.is_null() {
+                    set_main_window_cloaked(hwnd, true);
+                }
+            }
+        }
+
         let (install_tx, install_rx) = std::sync::mpsc::channel();
         if APOS_ATUALIZAR.load(Ordering::SeqCst) {
             state::log(
@@ -1001,6 +1086,27 @@ impl App {
                     &nome,
                     trf!("Não reconectou: {}", "Did not reconnect: {}", e.mensagem()),
                 );
+            }
+        }
+        // accounts marked "connect on open", in list order (no dialogs at
+        // startup: whatever cannot connect only goes to the log)
+        for conta in m.contas().into_iter().filter(|c| c.conectar_ao_abrir) {
+            if m.ativa(&conta.id) {
+                continue;
+            }
+            let nome = conta.nome_exibicao();
+            if !m.conflitos_de_rota(&conta.id).is_empty() {
+                state::log(
+                    nome,
+                    tr!(
+                        "Não conectou ao abrir: outra VPN já leva toda a internet.",
+                        "Not connected on open: another VPN already carries all traffic."
+                    ),
+                );
+                continue;
+            }
+            if let Err(e) = m.conectar(&conta.id, find_openvpn()) {
+                state::log(nome, trf!("Não conectou ao abrir: {}", "Not connected on open: {}", e.mensagem()));
             }
         }
         let ctx = cc.egui_ctx.clone();
@@ -1031,6 +1137,7 @@ impl App {
             }
             Ok("new") => app.abrir_editor(Conta::nova(), true),
             Ok("update") => app.janela_atualizacao = true,
+            Ok("settings") => app.tela = Tela::Configuracoes,
             _ => {}
         }
         app
@@ -1343,11 +1450,7 @@ impl App {
             return;
         }
 
-        let fundo_cartao = if self.dark {
-            egui::Color32::from_rgb(0x26, 0x29, 0x31)
-        } else {
-            egui::Color32::from_rgb(0xff, 0xff, 0xff)
-        };
+        let fundo_cartao = fundo_cartao(self.dark);
         // the list takes the top space and the log is anchored at the bottom
         let varias_ativas = contas.iter().filter(|c| m.ativa(&c.id)).count() > 1;
         let altura_log = 150.0 + if varias_ativas { 44.0 } else { 0.0 };
@@ -1519,11 +1622,7 @@ impl App {
         }
         let m = engine::get();
         let contas = m.contas();
-        let fundo_cartao = if self.dark {
-            egui::Color32::from_rgb(0x26, 0x29, 0x31)
-        } else {
-            egui::Color32::from_rgb(0xff, 0xff, 0xff)
-        };
+        let fundo_cartao = fundo_cartao(self.dark);
 
         ui.label(egui::RichText::new(tr!("Contas", "Accounts")).size(18.0).strong());
         ui.add_space(4.0);
@@ -1531,7 +1630,7 @@ impl App {
         let mut remover: Option<Conta> = None;
 
         egui::ScrollArea::vertical()
-            .max_height((ui.available_height() - 150.0).max(120.0))
+            .max_height((ui.available_height() - 60.0).max(120.0))
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 if contas.is_empty() {
@@ -1636,7 +1735,6 @@ impl App {
                 self.abrir_editor(c, true);
             }
         });
-        self.rodape_atualizacao(ui);
 
         if let Some(c) = editar {
             self.abrir_editor(c, false);
@@ -1658,94 +1756,173 @@ impl App {
         }
     }
 
-    /// Language, version and updates: unobtrusive, at the bottom of the accounts screen.
-    fn rodape_atualizacao(&mut self, ui: &mut egui::Ui) {
-        use update::Estado;
+    /// Settings: startup, appearance and updates, in cards like the accounts.
+    fn tela_configuracoes(&mut self, ui: &mut egui::Ui) {
         use i18n::Idioma;
+        use update::Estado;
         let m = engine::get();
-        let fraco = label_color(self.dark);
+        let dark = self.dark;
+        let fraco = label_color(dark);
         let pequeno = |t: &str| egui::RichText::new(t).small().color(fraco);
-        ui.add_space(10.0);
-        ui.separator();
 
-        let escolhido = m.idioma();
-        let automatico = trf!("Automático ({})", "Automatic ({})", i18n::do_windows().nome());
-        let mut novo = escolhido;
-        ui.horizontal(|ui| {
-            ui.label(pequeno(tr!("Idioma", "Language")));
-            egui::ComboBox::from_id_salt("idioma")
-                .selected_text(
-                    egui::RichText::new(escolhido.map(Idioma::nome).unwrap_or(&automatico)).small(),
-                )
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut novo, None, automatico.as_str());
-                    for i in [Idioma::Portugues, Idioma::Ingles] {
-                        ui.selectable_value(&mut novo, Some(i), i.nome());
-                    }
-                });
-        });
-        if novo != escolhido {
-            m.salvar_idioma(novo);
-            apply_tray_state();
-        }
-
-        let mut auto = m.verifica_atualizacoes();
-        if ui
-            .checkbox(
-                &mut auto,
-                pequeno(tr!(
-                    "Procurar novas versões automaticamente",
-                    "Check for new versions automatically"
-                )),
-            )
-            .on_hover_text(tr!(
-                "Uma vez por dia o aplicativo consulta o GitHub, sem enviar dados seus.",
-                "Once a day the app checks GitHub, without sending any of your data."
-            ))
-            .changed()
-        {
-            m.salvar_verifica_atualizacoes(auto);
-        }
-        ui.horizontal(|ui| {
-            ui.label(pequeno(&trf!("Versão {}", "Version {}", update::VERSAO_ATUAL)));
-            let estado = update::estado();
-            match &estado {
-                Estado::Verificando => {
-                    ui.spinner();
-                    ui.label(pequeno(tr!("procurando...", "checking...")));
-                }
-                Estado::EmDia => {
-                    ui.label(pequeno(tr!(
-                        "·  você já tem a versão mais recente",
-                        "·  you have the latest version"
-                    )));
-                }
-                Estado::FalhaVerificacao(e) => {
-                    ui.add(egui::Label::new(pequeno(&format!("·  {e}"))).truncate());
-                }
-                Estado::Nada => {}
-                _ => {
-                    if let Some(v) = update::disponivel() {
-                        let texto = egui::RichText::new(trf!(
-                            "·  versão {v} disponível",
-                            "·  version {v} available"
-                        ))
-                            .small()
-                            .color(ACCENT);
-                        if ui.link(texto).clicked() {
-                            self.janela_atualizacao = true;
+        ui.label(egui::RichText::new(tr!("Configurações", "Settings")).size(18.0).strong());
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                // ---------------------------------------------------- startup
+                secao(ui, tr!("INICIALIZAÇÃO", "STARTUP"), dark, |ui| {
+                    let mut com_windows = startup::ativo();
+                    if linha_toggle(
+                        ui,
+                        dark,
+                        tr!("Iniciar com o Windows", "Start with Windows"),
+                        tr!(
+                            "Abre o app quando você entra no Windows.",
+                            "Opens the app when you sign in to Windows."
+                        ),
+                        &mut com_windows,
+                        true,
+                    ) {
+                        if let Err(e) = startup::definir(com_windows) {
+                            error_box(&e);
                         }
                     }
-                }
-            }
-            if matches!(estado, Estado::Nada | Estado::EmDia | Estado::FalhaVerificacao(_))
-                && ui
-                    .link(egui::RichText::new(tr!("Procurar agora", "Check now")).small())
-                    .clicked()
-            {
-                update::verificar_agora();
-            }
-        });
+                    ui.add_space(4.0);
+                    let mut minimizado = m.iniciar_minimizado();
+                    if linha_toggle(
+                        ui,
+                        dark,
+                        tr!("Iniciar minimizado", "Start minimized"),
+                        tr!(
+                            "Ao abrir com o Windows, fica só no ícone da bandeja.",
+                            "When opened by Windows, stays in the tray icon only."
+                        ),
+                        &mut minimizado,
+                        com_windows,
+                    ) {
+                        m.salvar_iniciar_minimizado(minimizado);
+                    }
+
+                    ui.add_space(6.0);
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(tr!("Conectar ao abrir", "Connect on open"))
+                            .color(ui.visuals().strong_text_color()),
+                    );
+                    ui.label(pequeno(tr!(
+                        "Estas contas conectam sozinhas sempre que o app abre.",
+                        "These accounts connect by themselves whenever the app opens."
+                    )));
+                    ui.add_space(2.0);
+                    let contas = m.contas();
+                    if contas.is_empty() {
+                        ui.label(pequeno(tr!("Nenhuma conta cadastrada.", "No accounts yet.")));
+                    }
+                    for conta in contas {
+                        let mut ligado = conta.conectar_ao_abrir;
+                        if linha_toggle(ui, dark, conta.nome_exibicao(), "", &mut ligado, true) {
+                            m.definir_conectar_ao_abrir(&conta.id, ligado);
+                        }
+                    }
+                });
+
+                // ------------------------------------------------- appearance
+                secao(ui, tr!("APARÊNCIA", "APPEARANCE"), dark, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(tr!("Tema", "Theme")).color(ui.visuals().strong_text_color()));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            // right to left: the last one added is the leftmost
+                            for (escuro, nome) in [(false, tr!("Claro", "Light")), (true, tr!("Escuro", "Dark"))] {
+                                if ui.selectable_label(self.dark == escuro, nome).clicked() && self.dark != escuro {
+                                    self.dark = escuro;
+                                    apply_style(ui.ctx(), escuro);
+                                    m.salvar_tema(escuro);
+                                }
+                            }
+                        });
+                    });
+                    ui.add_space(4.0);
+                    let escolhido = m.idioma();
+                    let automatico = trf!("Automático ({})", "Automatic ({})", i18n::do_windows().nome());
+                    let mut novo = escolhido;
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(tr!("Idioma", "Language")).color(ui.visuals().strong_text_color()));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            egui::ComboBox::from_id_salt("idioma")
+                                .selected_text(escolhido.map(Idioma::nome).unwrap_or(&automatico))
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut novo, None, automatico.as_str());
+                                    for i in [Idioma::Portugues, Idioma::Ingles] {
+                                        ui.selectable_value(&mut novo, Some(i), i.nome());
+                                    }
+                                });
+                        });
+                    });
+                    if novo != escolhido {
+                        m.salvar_idioma(novo);
+                        apply_tray_state();
+                    }
+                });
+
+                // ---------------------------------------------------- updates
+                secao(ui, tr!("ATUALIZAÇÕES", "UPDATES"), dark, |ui| {
+                    let mut auto = m.verifica_atualizacoes();
+                    if linha_toggle(
+                        ui,
+                        dark,
+                        tr!("Procurar novas versões", "Check for new versions"),
+                        tr!(
+                            "Uma vez por dia, no GitHub, sem enviar dados seus.",
+                            "Once a day, on GitHub, without sending any of your data."
+                        ),
+                        &mut auto,
+                        true,
+                    ) {
+                        m.salvar_verifica_atualizacoes(auto);
+                    }
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        ui.label(pequeno(&trf!("Versão {}", "Version {}", update::VERSAO_ATUAL)));
+                        let estado = update::estado();
+                        match &estado {
+                            Estado::Verificando => {
+                                ui.spinner();
+                                ui.label(pequeno(tr!("procurando...", "checking...")));
+                            }
+                            Estado::EmDia => {
+                                ui.label(pequeno(tr!(
+                                    "·  você já tem a versão mais recente",
+                                    "·  you have the latest version"
+                                )));
+                            }
+                            Estado::FalhaVerificacao(e) => {
+                                ui.add(egui::Label::new(pequeno(&format!("·  {e}"))).truncate());
+                            }
+                            Estado::Nada => {}
+                            _ => {
+                                if let Some(v) = update::disponivel() {
+                                    let texto = egui::RichText::new(trf!(
+                                        "·  versão {v} disponível",
+                                        "·  version {v} available"
+                                    ))
+                                    .small()
+                                    .color(ACCENT);
+                                    if ui.link(texto).clicked() {
+                                        self.janela_atualizacao = true;
+                                    }
+                                }
+                            }
+                        }
+                        if matches!(estado, Estado::Nada | Estado::EmDia | Estado::FalhaVerificacao(_))
+                            && ui
+                                .link(egui::RichText::new(tr!("Procurar agora", "Check now")).small())
+                                .clicked()
+                        {
+                            update::verificar_agora();
+                        }
+                    });
+                });
+            });
     }
 
     fn janela_atualizacao(&mut self, ctx: &egui::Context) {
@@ -2132,6 +2309,14 @@ fn eframe_ctx() -> egui::Context {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         install_main_window_hook();
+        if MAIN_WNDPROC_INSTALLED.load(Ordering::SeqCst) && INICIAR_OCULTO.swap(false, Ordering::SeqCst) {
+            unsafe {
+                let hwnd = find_main_window();
+                if !hwnd.is_null() {
+                    esconder_janela(hwnd);
+                }
+            }
+        }
         self.poll_events();
         apply_tray_state();
         if ABRIR_ATUALIZACAO.swap(false, Ordering::SeqCst) {
@@ -2148,22 +2333,40 @@ impl eframe::App for App {
                 ui.horizontal(|ui| {
                     ui.heading(egui::RichText::new(APP_TITLE).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // theme button: shows the theme it will switch to
-                        let icon = if self.dark { "☀" } else { "🌙" };
-                        let btn = egui::Button::new(egui::RichText::new(icon).size(18.0))
-                            .min_size(egui::vec2(40.0, 32.0));
-                        if ui
-                            .add(btn)
-                            .on_hover_text(if self.dark {
-                                tr!("Tema claro", "Light theme")
-                            } else {
-                                tr!("Tema escuro", "Dark theme")
-                            })
-                            .clicked()
-                        {
-                            self.dark = !self.dark;
-                            apply_style(ctx, self.dark);
-                            engine::get().salvar_tema(self.dark);
+                        // each screen's button turns into "Back" in the same spot:
+                        // open and close a screen without moving the mouse
+                        let voltar = |ui: &mut egui::Ui| {
+                            ui.add(egui::Button::new(tr!("Voltar", "Back")).min_size(egui::vec2(0.0, 32.0)))
+                                .clicked()
+                        };
+                        // rightmost slot: settings (or "Back" while in settings)
+                        match self.tela {
+                            Tela::Configuracoes => {
+                                if voltar(ui) {
+                                    self.tela = Tela::Inicio;
+                                    update::limpar_resultado();
+                                }
+                            }
+                            Tela::Inicio => {
+                                let b = egui::Button::new(egui::RichText::new("⚙").size(18.0))
+                                    .min_size(egui::vec2(40.0, 32.0));
+                                if ui.add(b).on_hover_text(tr!("Configurações", "Settings")).clicked() {
+                                    self.tela = Tela::Configuracoes;
+                                }
+                            }
+                            Tela::Contas => {
+                                // same gear, so "Back" stays exactly where "Accounts"
+                                // was; disabled while an account is being edited
+                                let b = egui::Button::new(egui::RichText::new("⚙").size(18.0))
+                                    .min_size(egui::vec2(40.0, 32.0));
+                                if ui
+                                    .add_enabled(self.editor.is_none(), b)
+                                    .on_hover_text(tr!("Configurações", "Settings"))
+                                    .clicked()
+                                {
+                                    self.tela = Tela::Configuracoes;
+                                }
+                            }
                         }
                         if self.tela == Tela::Inicio {
                             let b = egui::Button::new(tr!("Contas", "Accounts"))
@@ -2172,15 +2375,8 @@ impl eframe::App for App {
                             if ui.add(b).on_hover_text(dica).clicked() {
                                 self.tela = Tela::Contas;
                             }
-                        } else if self.editor.is_none() {
-                            // "Back" in the same spot as "Accounts": open and close
-                            // the screen without moving the mouse
-                            let b = egui::Button::new(tr!("Voltar", "Back"))
-                                .min_size(egui::vec2(0.0, 32.0));
-                            if ui.add(b).clicked() {
-                                self.tela = Tela::Inicio;
-                                update::limpar_resultado();
-                            }
+                        } else if self.tela == Tela::Contas && self.editor.is_none() && voltar(ui) {
+                            self.tela = Tela::Inicio;
                         }
                         // new version: just an unobtrusive link in the header
                         if let Some(v) = update::disponivel() {
@@ -2207,6 +2403,7 @@ impl eframe::App for App {
                 match self.tela {
                     Tela::Inicio => self.tela_inicio(ui),
                     Tela::Contas => self.tela_contas(ui),
+                    Tela::Configuracoes => self.tela_configuracoes(ui),
                 }
             });
 
@@ -2279,6 +2476,12 @@ fn main() -> eframe::Result<()> {
         );
     }
     i18n::aplicar(engine::get().idioma());
+    startup::corrigir_caminho();
+    // started by Windows at logon with "start minimized": tray icon only
+    let oculto = startup::iniciado_pelo_windows() && engine::get().iniciar_minimizado();
+    if oculto {
+        INICIAR_OCULTO.store(true, Ordering::SeqCst);
+    }
 
     let (rgba, w, h) = load_icon_rgba(include_bytes!("../assets/app_64.png"));
     let icon = egui::IconData {
@@ -2352,7 +2555,7 @@ mod tests {
             })
         };
         // symbols actually used in the UI:
-        for c in ['\u{2022}', '·', '☀', '🌙', '\u{2B07}', '\u{2B06}', '—'] {
+        for c in ['\u{2022}', '·', '\u{2B07}', '\u{2B06}', '—', '⚙'] {
             assert!(covered(c), "egui proportional font lacks {c:?}");
         }
     }

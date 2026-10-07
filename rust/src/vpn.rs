@@ -378,6 +378,15 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<&'static str> {
         return None;
     };
     registrar_processo(&conta.id, Some(processo.pid));
+    if !processo.acompanhavel() {
+        state::log(
+            nome,
+            tr!(
+                "Aviso: não consegui acompanhar o processo do OpenVPN.",
+                "Warning: could not follow the OpenVPN process."
+            ),
+        );
+    }
 
     let mut stream: Option<TcpStream> = None;
     let mut buf: Vec<u8> = Vec::new();

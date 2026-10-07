@@ -22,9 +22,9 @@ instalador oficial do OpenVPN dentro — não é preciso instalar nada antes.
 |---|---|
 | ![Tema escuro](docs/pt-BR/home_dark.png) | ![Tema claro](docs/pt-BR/home_light.png) |
 
-| Contas | Editar conta |
-|---|---|
-| ![Lista de contas](docs/pt-BR/accounts.png) | ![Editor de conta](docs/pt-BR/editor.png) |
+| Contas | Editar conta | Configurações |
+|---|---|---|
+| ![Lista de contas](docs/pt-BR/accounts.png) | ![Editor de conta](docs/pt-BR/editor.png) | ![Configurações](docs/pt-BR/settings.png) |
 
 Se o OpenVPN Community não estiver instalado, o app avisa e instala sozinho,
 em silêncio, a partir do instalador oficial embutido (a verificação roda a
@@ -74,7 +74,10 @@ periódicas e as reconexões após queda funcionam sem intervenção.
   VPN, o app avisa antes de conectar a segunda — só a última funcionaria como
   rota padrão
 - **Português ou inglês**: segue o idioma do Windows; dá para fixar um dos
-  dois em **Contas** › Idioma
+  dois em **Configurações** ⚙ › Idioma
+- **Configurações** (botão ⚙): iniciar com o Windows, iniciar minimizado na
+  bandeja, quais contas conectam ao abrir o app, tema, idioma e verificação de
+  atualizações — tudo num lugar só, com os mesmos interruptores da tela inicial
 - **Importação por QR Code**: o mesmo QR usado para cadastrar o Google
   Authenticator preenche usuário e seed (arquivo de imagem ou print colado)
 - **Instância única**: abrir o exe de novo só restaura a janela existente
@@ -150,6 +153,7 @@ Estrutura:
 - [`service.rs`](rust/src/service.rs) — cliente do serviço interativo do
   OpenVPN (protocolo por named pipe) e autorização do usuário
 - [`elevate.rs`](rust/src/elevate.rs) — permissão de administrador sob demanda (UAC)
+- [`startup.rs`](rust/src/startup.rs) — "Iniciar com o Windows" (chave Run do usuário)
 - [`state.rs`](rust/src/state.rs) — estado compartilhado por conta e log;
   escrito pelas conexões, lido pela interface e pela bandeja
 - [`accounts.rs`](rust/src/accounts.rs) — modelo de conta, autenticação e validação
@@ -170,7 +174,7 @@ Variáveis úteis para desenvolvimento e testes:
 | `VPN_OPENVPN` | aponta um `openvpn.exe` alternativo (inexistente = força o aviso) |
 | `VPN_INSTANCE` | separa uma instância de teste do app de uso diário |
 | `VPN_SKIP_HINT` | não mostra o aviso da primeira ida à bandeja |
-| `VPN_SCREENSHOT` | capturas de tela da documentação: com `accounts`, `edit`, `new` ou `update`, abre direto naquela tela |
+| `VPN_SCREENSHOT` | capturas de tela da documentação: com `accounts`, `edit`, `new`, `settings` ou `update`, abre direto naquela tela |
 | `VPN_LANGUAGE` | força `pt` ou `en` (capturas de tela) |
 | `VPN_UPDATE_URL` | consulta outro endereço no lugar da API do GitHub (testes da atualização) |
 | `APPDATA` | redirecione para uma pasta de teste para não tocar nas contas reais |
@@ -182,7 +186,7 @@ Não há servidor próprio: o app consulta
 depois uma vez por dia. Esse endereço ignora pré-lançamentos, então uma versão
 só chega aos usuários quando é publicada como definitiva. A consulta não envia
 dados do usuário (o GitHub vê apenas o IP e a versão do app no User-Agent) e
-pode ser desligada em **Contas** › "Procurar novas versões automaticamente".
+pode ser desligada em **Configurações** ⚙ › "Procurar novas versões".
 
 Nada abre sozinho: havendo versão nova, aparece apenas o link azul
 "Versão X disponível" no topo da janela (e um item no menu da bandeja). A
@@ -275,8 +279,8 @@ O app não coleta nem envia dados do usuário. As únicas conexões de rede são
   arquivos `.ovpn` de cada conta);
 - a **verificação de versões novas** no GitHub (descrita em
   [Atualizações](#atualizações)), que não envia dados do usuário — o GitHub vê
-  apenas o IP e a versão do app — e pode ser desligada em **Contas** ›
-  "Procurar novas versões automaticamente". Vale a
+  apenas o IP e a versão do app — e pode ser desligada em **Configurações** ⚙ ›
+  "Procurar novas versões". Vale a
   [política de privacidade do GitHub](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 
 Contas, senhas e seeds ficam somente no computador, criptografadas (ver
@@ -284,7 +288,10 @@ Contas, senhas e seeds ficam somente no computador, criptografadas (ver
 
 ## Desinstalação
 
-O app não tem instalador: basta sair dele (bandeja › **Sair**) e apagar o
+O app não tem instalador. Se **Iniciar com o Windows** estiver ligado,
+desligue antes (em **Configurações** ⚙), para o Windows não ficar com uma
+entrada apontando para um arquivo apagado. Depois saia do app (bandeja ›
+**Sair**) e apague o
 `VPN.exe`. Para remover também as contas salvas e os logs, apague a pasta
 `%APPDATA%\VPN`. Se o OpenVPN Community foi instalado pelo app, ele pode ser
 removido em **Configurações do Windows › Aplicativos › Aplicativos

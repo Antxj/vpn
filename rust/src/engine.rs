@@ -140,6 +140,26 @@ impl Motor {
         dpapi::save_settings(&s);
     }
 
+    /// Turns "connect when the app opens" on or off for an account.
+    pub fn definir_conectar_ao_abrir(&self, id: &str, ligado: bool) {
+        let mut s = self.settings.lock().unwrap();
+        if let Some(c) = s.contas.iter_mut().find(|c| c.id == id) {
+            c.conectar_ao_abrir = ligado;
+            dpapi::save_settings(&s);
+        }
+    }
+
+    /// When started by Windows, stay in the tray (default: yes).
+    pub fn iniciar_minimizado(&self) -> bool {
+        self.settings.lock().unwrap().iniciar_minimizado != Some(false)
+    }
+
+    pub fn salvar_iniciar_minimizado(&self, ligado: bool) {
+        let mut s = self.settings.lock().unwrap();
+        s.iniciar_minimizado = if ligado { None } else { Some(false) };
+        dpapi::save_settings(&s);
+    }
+
     /// Check for new versions automatically (default: yes).
     pub fn verifica_atualizacoes(&self) -> bool {
         self.settings.lock().unwrap().atualizacoes != Some(false)

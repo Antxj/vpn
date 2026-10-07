@@ -71,6 +71,9 @@ pub struct Conta {
     /// not connected yet (or the .ovpn file changed since then).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tunel_completo: Option<bool>,
+    /// Connect automatically whenever the app opens.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub conectar_ao_abrir: bool,
 }
 
 static CONTADOR_ID: AtomicU64 = AtomicU64::new(0);
@@ -222,6 +225,7 @@ mod tests {
             seed: SEED.into(),
             senha: String::new(),
             tunel_completo: None,
+            conectar_ao_abrir: false,
         }
     }
 
