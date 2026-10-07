@@ -15,13 +15,17 @@ pub enum Autenticacao {
     Senha,
     /// Fixed password followed by the 6-digit token ("password123456").
     SenhaMaisToken,
+    /// No username/password: the VPN authenticates with the certificate in
+    /// the .ovpn only (the file has no `auth-user-pass`).
+    SoCertificado,
 }
 
 impl Autenticacao {
-    pub const TODAS: [Autenticacao; 3] = [
+    pub const TODAS: [Autenticacao; 4] = [
         Autenticacao::Token,
         Autenticacao::Senha,
         Autenticacao::SenhaMaisToken,
+        Autenticacao::SoCertificado,
     ];
 
     pub fn rotulo(self) -> &'static str {
@@ -29,7 +33,13 @@ impl Autenticacao {
             Autenticacao::Token => tr!("Token (Google Authenticator)", "Token (Google Authenticator)"),
             Autenticacao::Senha => tr!("Senha fixa", "Fixed password"),
             Autenticacao::SenhaMaisToken => tr!("Senha + token", "Password + token"),
+            Autenticacao::SoCertificado => tr!("Só certificado", "Certificate only"),
         }
+    }
+
+    /// Asks for a username (every mode except certificate only).
+    pub fn usa_usuario(self) -> bool {
+        self != Autenticacao::SoCertificado
     }
 
     pub fn usa_token(self) -> bool {
@@ -117,7 +127,27 @@ impl Conta {
         if self.config.trim().is_empty() || !Path::new(&self.config).exists() {
             return Err(tr!("Escolha um arquivo .ovpn válido.", "Choose a valid .ovpn file.").into());
         }
-        if self.usuario.trim().is_empty() {
+        // the .ovpn decides whether OpenVPN asks for a username and password
+        let pede = pede_usuario_e_senha(Path::new(&self.config));
+        if self.autenticacao == Autenticacao::SoCertificado && pede {
+            return Err(tr!(
+                "Este arquivo .ovpn pede usuário e senha (auth-user-pass). \
+                 Escolha outra forma de autenticação.",
+                "This .ovpn file asks for a username and password (auth-user-pass). \
+                 Choose another authentication method."
+            )
+            .into());
+        }
+        if self.autenticacao != Autenticacao::SoCertificado && !pede {
+            return Err(tr!(
+                "Este arquivo .ovpn não pede usuário e senha: a conexão usa só o \
+                 certificado. Escolha \"Só certificado\".",
+                "This .ovpn file does not ask for a username and password: the \
+                 connection uses the certificate only. Choose \"Certificate only\"."
+            )
+            .into());
+        }
+        if self.autenticacao.usa_usuario() && self.usuario.trim().is_empty() {
             return Err(tr!("Informe o usuário.", "Enter the username.").into());
         }
         if self.autenticacao.usa_token() && totp::normalize_seed(&self.seed).is_none() {
@@ -142,15 +172,19 @@ impl Conta {
             Autenticacao::Token => token.map(str::to_string),
             Autenticacao::Senha => Some(self.senha.clone()),
             Autenticacao::SenhaMaisToken => token.map(|t| format!("{}{t}", self.senha)),
+            Autenticacao::SoCertificado => None,
         }
     }
 }
 
-/// True when the .ovpn sends ALL traffic through the VPN (`redirect-gateway`).
-/// Two such connections at the same time fight over the default route and
-/// the last one to connect wins. Only sees the file directive: the server
-/// can also push that route, which is only known after connecting.
-pub fn redireciona_tudo(config: &Path) -> bool {
+/// True when the .ovpn makes OpenVPN ask for a username and password
+/// (`auth-user-pass`). Without it, the connection uses the certificate only.
+pub fn pede_usuario_e_senha(config: &Path) -> bool {
+    tem_diretiva(config, "auth-user-pass")
+}
+
+/// The .ovpn has the directive (ignoring comments).
+fn tem_diretiva(config: &Path, diretiva: &str) -> bool {
     let Ok(texto) = std::fs::read_to_string(config) else {
         return false;
     };
@@ -158,8 +192,16 @@ pub fn redireciona_tudo(config: &Path) -> bool {
         let linha = linha.trim();
         !linha.starts_with('#')
             && !linha.starts_with(';')
-            && linha.split_whitespace().next() == Some("redirect-gateway")
+            && linha.split_whitespace().next() == Some(diretiva)
     })
+}
+
+/// True when the .ovpn sends ALL traffic through the VPN (`redirect-gateway`).
+/// Two such connections at the same time fight over the default route and
+/// the last one to connect wins. Only sees the file directive: the server
+/// can also push that route, which is only known after connecting.
+pub fn redireciona_tudo(config: &Path) -> bool {
+    tem_diretiva(config, "redirect-gateway")
 }
 
 #[cfg(test)]
@@ -170,7 +212,7 @@ mod tests {
 
     fn conta_valida(dir: &Path) -> Conta {
         let cfg = dir.join("teste.ovpn");
-        std::fs::write(&cfg, "client\n").unwrap();
+        std::fs::write(&cfg, "client\nauth-user-pass\n").unwrap();
         Conta {
             id: novo_id(),
             nome: "Teste".into(),
@@ -207,6 +249,44 @@ mod tests {
             c.compor_senha(Some("123456")).as_deref(),
             Some("segredo123456")
         );
+
+        // certificate only: never answers a username/password prompt
+        c.autenticacao = Autenticacao::SoCertificado;
+        assert_eq!(c.compor_senha(Some("123456")), None);
+    }
+
+    #[test]
+    fn so_certificado_segue_o_arquivo_ovpn() {
+        let dir = dir_temp("certificado");
+        let so_cert = dir.join("so-cert.ovpn");
+        std::fs::write(&so_cert, "client\n# auth-user-pass (commented out)\nremote x 1194\n").unwrap();
+        let com_senha = dir.join("com-senha.ovpn");
+        std::fs::write(&com_senha, "client\n  auth-user-pass\nremote x 1194\n").unwrap();
+        assert!(!pede_usuario_e_senha(&so_cert));
+        assert!(pede_usuario_e_senha(&com_senha));
+
+        // certificate only: no username, seed or password needed
+        let c = Conta {
+            id: novo_id(),
+            nome: "Cert".into(),
+            config: so_cert.to_string_lossy().into_owned(),
+            autenticacao: Autenticacao::SoCertificado,
+            ..Default::default()
+        };
+        assert!(c.validar().is_ok(), "{:?}", c.validar());
+        assert!(!c.autenticacao.usa_usuario());
+
+        // the mode has to match the file, both ways
+        let mut errado = c.clone();
+        errado.config = com_senha.to_string_lossy().into_owned();
+        assert!(errado.validar().unwrap_err().contains("auth-user-pass"));
+        let mut errado = c.clone();
+        errado.autenticacao = Autenticacao::Senha;
+        errado.usuario = "u".into();
+        errado.senha = "p".into();
+        assert!(errado.validar().unwrap_err().contains("Só certificado"));
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

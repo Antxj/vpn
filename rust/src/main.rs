@@ -883,6 +883,20 @@ fn tipo_de_tunel(conta: &Conta) -> Option<(&'static str, &'static str)> {
     })
 }
 
+/// The .ovpn decides whether there is a username/password at all: without
+/// `auth-user-pass` the account becomes "certificate only".
+fn ajustar_autenticacao(conta: &mut Conta) {
+    if conta.config.is_empty() {
+        return;
+    }
+    let pede = accounts::pede_usuario_e_senha(std::path::Path::new(&conta.config));
+    if !pede {
+        conta.autenticacao = Autenticacao::SoCertificado;
+    } else if conta.autenticacao == Autenticacao::SoCertificado {
+        conta.autenticacao = Autenticacao::Token;
+    }
+}
+
 fn cor_situacao(s: Situacao, padrao: egui::Color32) -> egui::Color32 {
     match s {
         Situacao::Conectado => egui::Color32::from_rgb(0x2a, 0xa0, 0x2a),
@@ -1618,11 +1632,8 @@ impl App {
                 c.config = find_default_config()
                     .map(|p| p.to_string_lossy().into_owned())
                     .unwrap_or_default();
+                ajustar_autenticacao(&mut c);
                 self.abrir_editor(c, true);
-            }
-            if ui.button(tr!("Voltar", "Back")).clicked() {
-                self.tela = Tela::Inicio;
-                update::limpar_resultado();
             }
         });
         self.rodape_atualizacao(ui);
@@ -1912,6 +1923,7 @@ impl App {
                         }
                         if let Some(p) = dlg.pick_file() {
                             ed.conta.config = p.to_string_lossy().into_owned();
+                            ajustar_autenticacao(&mut ed.conta);
                             if ed.conta.nome.trim().is_empty() {
                                 if let Some(stem) = p.file_stem() {
                                     ed.conta.nome = stem.to_string_lossy().into_owned();
@@ -1922,12 +1934,14 @@ impl App {
                 });
                 ui.add_space(4.0);
 
-                rotulo(ui, tr!("USUÁRIO", "USERNAME"), dark);
-                ui.add(
-                    egui::TextEdit::singleline(&mut ed.conta.usuario)
-                        .desired_width(f32::INFINITY),
-                );
-                ui.add_space(4.0);
+                if ed.conta.autenticacao.usa_usuario() {
+                    rotulo(ui, tr!("USUÁRIO", "USERNAME"), dark);
+                    ui.add(
+                        egui::TextEdit::singleline(&mut ed.conta.usuario)
+                            .desired_width(f32::INFINITY),
+                    );
+                    ui.add_space(4.0);
+                }
 
                 rotulo(ui, tr!("AUTENTICAÇÃO", "AUTHENTICATION"), dark);
                 ui.horizontal_wrapped(|ui| {
@@ -2025,6 +2039,9 @@ impl App {
             let mut c = ed.conta.clone();
             c.nome = c.nome.trim().to_string();
             c.usuario = c.usuario.trim().to_string();
+            if !c.autenticacao.usa_usuario() {
+                c.usuario.clear();
+            }
             if let Some(seed) = totp::normalize_seed(&c.seed) {
                 c.seed = seed;
             }
@@ -2154,6 +2171,15 @@ impl eframe::App for App {
                             let dica = tr!("Cadastrar e editar contas", "Add and edit accounts");
                             if ui.add(b).on_hover_text(dica).clicked() {
                                 self.tela = Tela::Contas;
+                            }
+                        } else if self.editor.is_none() {
+                            // "Back" in the same spot as "Accounts": open and close
+                            // the screen without moving the mouse
+                            let b = egui::Button::new(tr!("Voltar", "Back"))
+                                .min_size(egui::vec2(0.0, 32.0));
+                            if ui.add(b).clicked() {
+                                self.tela = Tela::Inicio;
+                                update::limpar_resultado();
                             }
                         }
                         // new version: just an unobtrusive link in the header

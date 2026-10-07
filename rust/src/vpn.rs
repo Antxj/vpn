@@ -453,7 +453,36 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<&'static str> {
                 continue;
             }
 
-            if line.starts_with(">PASSWORD:Need 'Auth'") {
+            if line.starts_with(">PASSWORD:Need 'Private Key'") {
+                // the .ovpn private key is password-protected: not supported
+                // yet - without an answer OpenVPN would wait forever
+                state::log(
+                    nome,
+                    tr!(
+                        "A chave privada deste .ovpn tem senha, o que o app ainda não suporta.",
+                        "This .ovpn private key is password-protected, which the app does not support yet."
+                    ),
+                );
+                crate::error_box_async(trf!(
+                    "{nome}: a chave privada do arquivo .ovpn é protegida por senha, \
+                     e o app ainda não suporta isso.",
+                    "{nome}: the private key in the .ovpn file is password-protected, \
+                     which the app does not support yet."
+                ));
+                stop.store(true, Ordering::SeqCst);
+            } else if line.starts_with(">PASSWORD:Need 'Auth'") {
+                if !conta.autenticacao.usa_usuario() {
+                    // "certificate only" account, but OpenVPN asked anyway
+                    crate::error_box_async(trf!(
+                        "{nome}: a VPN pediu usuário e senha, mas a conta está como \
+                         \"Só certificado\". Edite a conta e escolha a autenticação.",
+                        "{nome}: the VPN asked for a username and password, but the account \
+                         is set to \"Certificate only\". Edit the account and choose the \
+                         authentication."
+                    ));
+                    stop.store(true, Ordering::SeqCst);
+                    continue;
+                }
                 let token = if conta.autenticacao.usa_token() {
                     let Some(t) = fresh_token(&conta.seed, force_next_window, stop, nome) else {
                         continue;

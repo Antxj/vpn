@@ -48,9 +48,10 @@ without user intervention.
 
 - **Multiple accounts**: each with its own toggle on the home screen, status,
   IP and traffic; several can be connected at the same time
-- **Three authentication methods** per account: token (Google
-  Authenticator), fixed password, or password + token (the password followed
-  by the 6-digit code)
+- **Four authentication methods** per account: token (Google
+  Authenticator), fixed password, password + token (the password followed by
+  the 6-digit code), or certificate only — picked automatically when the
+  `.ovpn` file has no `auth-user-pass`, so no username is needed
 - **Accounts screen**: add, edit and remove; the editor shows the
   current token so it can be compared with the phone before saving
 - **System tray**: closing or minimizing does not disconnect. The icon

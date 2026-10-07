@@ -44,8 +44,10 @@ periódicas e as reconexões após queda funcionam sem intervenção.
 
 - **Várias contas**: cada uma com seu interruptor na tela inicial, status,
   IP e tráfego; dá para conectar várias ao mesmo tempo
-- **Três formas de autenticação** por conta: token (Google Authenticator),
-  senha fixa, ou senha + token (a senha seguida do código de 6 dígitos)
+- **Quatro formas de autenticação** por conta: token (Google Authenticator),
+  senha fixa, senha + token (a senha seguida do código de 6 dígitos) ou só
+  certificado — escolhida sozinha quando o `.ovpn` não tem `auth-user-pass`,
+  e aí não é preciso informar usuário
 - **Tela de contas**: cadastrar, editar e remover; a edição mostra o token
   atual para conferir com o celular antes de salvar
 - **Bandeja do sistema**: fechar ou minimizar não desconecta. O ícone resume
