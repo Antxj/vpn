@@ -1,106 +1,78 @@
-//! One connection per account: starts openvpn.exe and feeds the management
-//! interface with the account's password (freshly generated TOTP token,
-//! fixed password or both). Each connection uses its own free management
-//! port and writes its own OpenVPN log; the state goes straight to `state`.
+//! One connection per account: asks the OpenVPN interactive service to start
+//! openvpn.exe and feeds its management interface with the account's password
+//! (freshly generated TOTP token, fixed password or both). Each connection
+//! uses its own free management port and writes its own OpenVPN log; the
+//! state goes straight to `state`.
+//!
+//! The app runs without administrator rights: the service performs the
+//! privileged network changes (see `service`).
 
 use crate::accounts::Conta;
+use crate::service::{self, Falha};
 use crate::state::{self, Situacao, Traffic};
 use crate::totp;
-use std::ffi::c_void;
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{Ipv4Addr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
-use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const MAX_AUTH_FAILURES: u32 = 3;
 
-// ---- job object: makes sure openvpn.exe dies together with the app, ----
-// ---- even if the app is killed (no orphan daemon) -----------------------
+// ---- bookkeeping shared by the connections ---------------------------------
 
-const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
-const JOB_EXTENDED_LIMIT_CLASS: u32 = 9;
+/// openvpn.exe processes started by this app (account id, pid), also saved to
+/// disk so the next run can clean up after a crash.
+static PROCESSOS: Mutex<Vec<(String, u32)>> = Mutex::new(Vec::new());
+/// Server address of each connected account (account id, IP).
+static SERVIDORES: Mutex<Vec<(String, Ipv4Addr)>> = Mutex::new(Vec::new());
 
-#[repr(C)]
-#[derive(Default)]
-struct IoCounters {
-    read_ops: u64,
-    write_ops: u64,
-    other_ops: u64,
-    read_bytes: u64,
-    write_bytes: u64,
-    other_bytes: u64,
+fn arquivo_de_pids() -> PathBuf {
+    crate::dpapi::app_dir().join("openvpn.pids")
 }
 
-#[repr(C)]
-#[derive(Default)]
-struct BasicLimits {
-    per_process_time: i64,
-    per_job_time: i64,
-    limit_flags: u32,
-    min_ws: usize,
-    max_ws: usize,
-    active_process_limit: u32,
-    affinity: usize,
-    priority: u32,
-    scheduling: u32,
+fn registrar_processo(conta_id: &str, pid: Option<u32>) {
+    let mut lista = PROCESSOS.lock().unwrap();
+    lista.retain(|(c, _)| c != conta_id);
+    if let Some(pid) = pid {
+        lista.push((conta_id.to_string(), pid));
+    }
+    let texto: String = lista.iter().map(|(_, pid)| format!("{pid}\n")).collect();
+    let _ = std::fs::create_dir_all(crate::dpapi::app_dir());
+    let _ = std::fs::write(arquivo_de_pids(), texto);
 }
 
-#[repr(C)]
-#[derive(Default)]
-struct ExtendedLimits {
-    basic: BasicLimits,
-    io: IoCounters,
-    process_mem: usize,
-    job_mem: usize,
-    peak_process: usize,
-    peak_job: usize,
+/// At startup: terminates openvpn.exe processes left behind by a previous run
+/// that did not end normally (killed, crashed). Returns how many.
+pub fn encerrar_orfaos() -> usize {
+    let texto = std::fs::read_to_string(arquivo_de_pids()).unwrap_or_default();
+    let encerrados = texto
+        .lines()
+        .filter_map(|l| l.trim().parse::<u32>().ok())
+        .filter(|&pid| service::encerrar_se_openvpn(pid))
+        .count();
+    let _ = std::fs::remove_file(arquivo_de_pids());
+    encerrados
 }
 
-#[link(name = "kernel32")]
-extern "system" {
-    fn CreateJobObjectW(attrs: *mut c_void, name: *const u16) -> *mut c_void;
-    fn SetInformationJobObject(job: *mut c_void, class: u32, info: *mut c_void, len: u32) -> i32;
-    fn AssignProcessToJobObject(job: *mut c_void, process: *mut c_void) -> i32;
-    fn CloseHandle(handle: *mut c_void) -> i32;
-}
-
-struct JobGuard(*mut c_void);
-unsafe impl Send for JobGuard {}
-impl Drop for JobGuard {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            unsafe { CloseHandle(self.0) };
-        }
+fn registrar_servidor(conta_id: &str, ip: Option<Ipv4Addr>) {
+    let mut lista = SERVIDORES.lock().unwrap();
+    lista.retain(|(c, _)| c != conta_id);
+    if let Some(ip) = ip {
+        lista.push((conta_id.to_string(), ip));
     }
 }
 
-fn attach_kill_job(child: &Child) -> Option<JobGuard> {
-    use std::os::windows::io::AsRawHandle;
-    unsafe {
-        let job = CreateJobObjectW(ptr::null_mut(), ptr::null());
-        if job.is_null() {
-            return None;
-        }
-        let mut info = ExtendedLimits::default();
-        info.basic.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        let ok = SetInformationJobObject(
-            job,
-            JOB_EXTENDED_LIMIT_CLASS,
-            &mut info as *mut _ as *mut c_void,
-            std::mem::size_of::<ExtendedLimits>() as u32,
-        ) != 0
-            && AssignProcessToJobObject(job, child.as_raw_handle() as *mut c_void) != 0;
-        if !ok {
-            CloseHandle(job);
-            return None;
-        }
-        Some(JobGuard(job))
-    }
+/// Servers of the OTHER connected VPNs, to keep them outside a full tunnel.
+fn servidores_de_outras(conta_id: &str) -> Vec<Ipv4Addr> {
+    SERVIDORES
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(c, ip)| c != conta_id && crate::routes::publico(*ip))
+        .map(|(_, ip)| *ip)
+        .collect()
 }
 
 /// Handle of a connection in progress.
@@ -212,31 +184,14 @@ fn fresh_token(seed: &str, force_next: bool, stop: &AtomicBool, nome: &str) -> O
     totp::totp_now(seed)
 }
 
-fn wait_child(child: &mut Child, secs: u64) -> Option<i32> {
-    let deadline = Instant::now() + Duration::from_secs(secs);
-    while Instant::now() < deadline {
-        if let Ok(Some(status)) = child.try_wait() {
-            return status.code();
-        }
-        std::thread::sleep(Duration::from_millis(200));
-    }
-    let _ = child.kill();
-    child.try_wait().ok().flatten().and_then(|s| s.code())
-}
-
-/// Creates another virtual adapter with OpenVPN's own tapctl.exe.
+/// Creates another virtual adapter with OpenVPN's own tapctl.exe. Needs
+/// administrator rights: Windows asks for them (UAC) at this moment. Rare:
+/// with OpenVPN 2.7 the service usually creates the adapter by itself.
 fn criar_adaptador(openvpn: &Path, hwid: &str) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
     let tapctl = openvpn.with_file_name("tapctl.exe");
-    let saida = Command::new(&tapctl)
-        .args(["create", "--hwid", hwid])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| trf!("não consegui executar o tapctl: {e}", "could not run tapctl: {e}"))?;
-    if saida.status.success() {
-        Ok(())
-    } else {
-        Err(String::from_utf8_lossy(&saida.stderr).trim().to_string())
+    match crate::elevate::executar_como_admin(&tapctl, &format!("create --hwid {hwid}"))? {
+        0 => Ok(()),
+        codigo => Err(trf!("o tapctl falhou (código {codigo})", "tapctl failed (code {codigo})")),
     }
 }
 
@@ -249,34 +204,9 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
     state::definir(&conta.id, Situacao::Conectando, None);
     std::thread::spawn(move || {
         let nome = conta.nome_exibicao().to_string();
-        // Split-tunnel VPN: the path to the server is pinned to the local
-        // network, so it does not drop when another (full-tunnel) VPN connects.
-        // The routes live until this thread ends (Drop removes them).
-        let mut rotas = if conta.tunel_completo() == Some(true) {
-            None
-        } else {
-            match crate::routes::fixar_servidores(Path::new(&conta.config)) {
-                Ok(r) => {
-                    let ips: Vec<String> = r.ips.iter().map(|ip| ip.to_string()).collect();
-                    state::log(
-                        &nome,
-                        trf!(
-                            "Servidor {} fixado na rede local.",
-                            "Server {} pinned to the local network.",
-                            ips.join(", ")
-                        ),
-                    );
-                    Some(r)
-                }
-                Err(e) => {
-                    state::log(&nome, trf!("Sem rota fixa para o servidor: {e}", "No pinned route to the server: {e}"));
-                    None
-                }
-            }
-        };
         // up to 2 attempts: the second one only happens if a network adapter was missing
         for tentativa in 0..2 {
-            let Some(hwid) = run(&conta, &nome, &openvpn, &stop2, &mut rotas) else {
+            let Some(hwid) = run(&conta, &nome, &stop2) else {
                 break;
             };
             if tentativa > 0 || stop2.load(Ordering::SeqCst) {
@@ -311,6 +241,7 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
         }
         // the tray is updated here, not only by the UI: with the window hidden
         // the egui loop does not run and the icon would stay green
+        registrar_servidor(&conta.id, None);
         state::definir(&conta.id, Situacao::Desconectado, None);
         finished2.store(true, Ordering::SeqCst);
     });
@@ -343,17 +274,69 @@ fn registrar_tipo_de_tunel(conta: &Conta, nome: &str, ip_local: Option<&str>) {
     }
 }
 
+/// Starts openvpn.exe through the service. When the Windows user is not yet
+/// authorized to use the service with any config, offers to authorize it once
+/// (an administrator approves it) and tries again.
+fn iniciar_pelo_servico(nome: &str, cfg_dir: &Path, opcoes: &str) -> Option<service::Processo> {
+    let falhou = |e: &Falha| {
+        state::log(nome, trf!("Não consegui iniciar o OpenVPN: {}", "Could not start OpenVPN: {}", e.mensagem()));
+        crate::error_box_async(trf!(
+            "{nome}: não consegui iniciar o OpenVPN.\n\n{}",
+            "{nome}: could not start OpenVPN.\n\n{}",
+            e.mensagem()
+        ));
+    };
+    match service::iniciar(cfg_dir, opcoes) {
+        Ok(p) => Some(p),
+        Err(Falha::NaoAutorizado(msg)) => {
+            state::log(nome, msg);
+            if cfg!(test) || !perguntar_autorizacao() {
+                return None;
+            }
+            if let Err(e) = service::autorizar_usuario_atual() {
+                state::log(nome, trf!("Autorização não concluída: {e}", "Authorization not completed: {e}"));
+                return None;
+            }
+            state::log(nome, tr!("Usuário autorizado no OpenVPN.", "User authorized in OpenVPN."));
+            match service::iniciar(cfg_dir, opcoes) {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    falhou(&e);
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            falhou(&e);
+            None
+        }
+    }
+}
+
+/// Explains the one-time authorization and asks whether to go ahead.
+fn perguntar_autorizacao() -> bool {
+    let grupo = service::grupo_autorizado();
+    rfd::MessageDialog::new()
+        .set_title("VPN")
+        .set_description(trf!(
+            "Para conectar sem pedir permissão de administrador a cada vez, o \
+             OpenVPN precisa autorizar esta conta do Windows uma única vez \
+             (incluindo-a no grupo \"{grupo}\").\n\nO Windows vai pedir a \
+             permissão de um administrador agora. Continuar?",
+            "To connect without asking for administrator permission every time, \
+             OpenVPN needs to authorize this Windows account once (adding it to \
+             the \"{grupo}\" group).\n\nWindows will ask for an administrator's \
+             permission now. Continue?"
+        ))
+        .set_level(rfd::MessageLevel::Info)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show()
+        == rfd::MessageDialogResult::Yes
+}
+
 /// Runs one connection attempt. Returns Some(hwid) when OpenVPN exited
 /// because no network adapter was free (worth trying again).
-fn run(
-    conta: &Conta,
-    nome: &str,
-    openvpn: &Path,
-    stop: &AtomicBool,
-    rotas: &mut Option<crate::routes::RotasDiretas>,
-) -> Option<&'static str> {
-    use std::os::windows::process::CommandExt;
-
+fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<&'static str> {
     let config = PathBuf::from(&conta.config);
     let port = free_port();
     let cfg_dir = config.parent().map(PathBuf::from).unwrap_or_default();
@@ -364,42 +347,37 @@ fn run(
         trf!("Iniciando o OpenVPN ({})", "Starting OpenVPN ({})", conta.arquivo()),
     );
 
-    let mut child = match Command::new(openvpn)
-        .args(["--config"])
-        .arg(&config)
-        .args([
-            "--management",
-            "127.0.0.1",
-            &port.to_string(),
-            "--management-query-passwords",
-            "--auth-retry",
-            "interact",
-            "--auth-nocache",
-            "--connect-retry",
-            "5",
-            "--log",
-        ])
-        .arg(&log_file)
-        .current_dir(&cfg_dir)
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => {
+    let mut opcoes = vec![
+        "--config".to_string(),
+        service::argumento(&config.to_string_lossy()),
+        "--management 127.0.0.1".to_string(),
+        port.to_string(),
+        "--management-query-passwords --auth-retry interact --auth-nocache".to_string(),
+        "--connect-retry 5 --log".to_string(),
+        service::argumento(&log_file.to_string_lossy()),
+    ];
+    // Full tunnel: the servers of the other connected VPNs stay outside it
+    // (through the local network), so those VPNs do not drop when this one
+    // takes over the default route. OpenVPN adds and removes these routes.
+    if conta.tunel_completo() == Some(true) {
+        let outros = servidores_de_outras(&conta.id);
+        if !outros.is_empty() {
+            opcoes.push(crate::routes::opcoes_de_exclusao(&outros));
+            let lista: Vec<String> = outros.iter().map(|ip| ip.to_string()).collect();
             state::log(
                 nome,
-                trf!("Não consegui iniciar o OpenVPN: {e}", "Could not start OpenVPN: {e}"),
+                trf!(
+                    "Servidores de outras VPNs mantidos fora deste túnel: {}",
+                    "Servers of other VPNs kept outside this tunnel: {}",
+                    lista.join(", ")
+                ),
             );
-            crate::error_box_async(trf!(
-                "{nome}: não consegui iniciar o OpenVPN.\n\n{e}",
-                "{nome}: could not start OpenVPN.\n\n{e}"
-            ));
-            return None;
         }
+    }
+    let Some(processo) = iniciar_pelo_servico(nome, &cfg_dir, &opcoes.join(" ")) else {
+        return None;
     };
-
-    // while this guard exists, Windows kills openvpn if the app dies
-    let _job = attach_kill_job(&child);
+    registrar_processo(&conta.id, Some(processo.pid));
 
     let mut stream: Option<TcpStream> = None;
     let mut buf: Vec<u8> = Vec::new();
@@ -409,7 +387,7 @@ fn run(
     let mut pedido_de_parada = false;
 
     loop {
-        if let Ok(Some(_)) = child.try_wait() {
+        if processo.terminou().is_some() {
             break;
         }
         if stop.load(Ordering::SeqCst) {
@@ -421,7 +399,7 @@ fn run(
                 sent = s.write_all(b"signal SIGTERM\r\n").is_ok();
             }
             if !sent {
-                let _ = child.kill();
+                processo.matar();
             }
             break;
         }
@@ -533,21 +511,11 @@ fn run(
                 if situacao == Situacao::Conectado {
                     auth_failures = 0;
                     registrar_tipo_de_tunel(conta, nome, ip.as_deref());
+                    // remote (server) address: 5th field of the CONNECTED state
+                    registrar_servidor(&conta.id, parts.get(4).and_then(|s| s.parse().ok()));
                 } else {
                     last_count = None;
-                }
-                // reconnecting (e.g. the laptop moved to another Wi-Fi): the pinned
-                // server route has to follow the current local network
-                if situacao == Situacao::Reconectando
-                    && rotas.as_mut().is_some_and(|r| r.renovar())
-                {
-                    state::log(
-                        nome,
-                        tr!(
-                            "A rede local mudou: rota do servidor atualizada.",
-                            "The local network changed: server route updated."
-                        ),
-                    );
+                    registrar_servidor(&conta.id, None);
                 }
                 state::definir(&conta.id, situacao, ip);
                 state::log(nome, trf!("Estado: {state}", "State: {state}"));
@@ -560,7 +528,8 @@ fn run(
         }
     }
 
-    let code = wait_child(&mut child, 20);
+    let code = processo.esperar(Duration::from_secs(20));
+    registrar_processo(&conta.id, None);
     state::log(
         nome,
         trf!(

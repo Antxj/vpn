@@ -2,9 +2,6 @@
 // official OpenVPN installer (assets/openvpn.msi) into the binary.
 // With the GNU toolchain it requires windres on the PATH (ships with MinGW-w64).
 //
-// VPN_DEV_NOUAC=1 uses the asInvoker manifest (no admin prompt) -
-// for development/screenshots only; a real connection requires admin.
-//
 // The MSI is NOT in the repository (5.6 MB). build-release.ps1 downloads it
 // and verifies the SHA256 before building; without the file the binary has
 // no embedded installer (the app falls back to the notice with a download link).
@@ -18,20 +15,12 @@ const MSI_VERSION: &str = "2.7.6-I001";
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=app.rc");
-    println!("cargo:rerun-if-changed=app-dev.rc");
     println!("cargo:rerun-if-changed=assets/icon.ico");
     println!("cargo:rerun-if-changed=assets/app.manifest");
-    println!("cargo:rerun-if-changed=assets/app-dev.manifest");
     println!("cargo:rerun-if-changed=assets/openvpn.msi");
-    println!("cargo:rerun-if-env-changed=VPN_DEV_NOUAC");
 
     if std::env::var_os("CARGO_CFG_WINDOWS").is_some() {
-        let rc = if std::env::var_os("VPN_DEV_NOUAC").is_some() {
-            "app-dev.rc"
-        } else {
-            "app.rc"
-        };
-        embed_resource::compile(rc, embed_resource::NONE);
+        embed_resource::compile("app.rc", embed_resource::NONE);
     }
 
     // include_bytes! needs a path that always exists: when the MSI was not

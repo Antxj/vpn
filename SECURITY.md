@@ -26,7 +26,8 @@ Of particular interest:
 - the update mechanism (download, SHA-256 and signature checks, executable
   replacement);
 - the OpenVPN management interface, which listens only on `127.0.0.1`;
-- the routes the app creates.
+- the use of the OpenVPN interactive service (options passed to it) and the
+  elevated helper that authorizes a Windows account (`--authorize-openvpn-user`).
 
 Vulnerabilities in OpenVPN itself should be reported to the
 [OpenVPN project](https://community.openvpn.net/openvpn/wiki/SecurityAnnouncements).

@@ -53,16 +53,21 @@ periódicas e as reconexões após queda funcionam sem intervenção.
   conectando ou reconectando; cinza: nenhuma conectada), o tooltip lista cada
   conexão, e o menu do botão direito liga/desliga cada conta, além de
   "Desconectar todas" e "Sair"
+- **Sem permissão de administrador**: o app roda como usuário comum e pede ao
+  serviço interativo do OpenVPN que inicie cada conexão — o mesmo jeito do
+  OpenVPN GUI. O Windows só pede permissão de administrador em tarefas
+  ocasionais: instalar o OpenVPN, autorizar uma vez uma conta do Windows que
+  não é administradora, ou criar um adaptador de rede a mais (detalhes em
+  [Permissão de administrador](#permissão-de-administrador))
 - **Conexões simultâneas**: cada uma precisa de um adaptador de rede virtual
-  próprio; se todos estiverem ocupados, o app cria mais um sozinho (com o
-  `tapctl.exe` do próprio OpenVPN) e tenta de novo
+  próprio; o OpenVPN 2.7 cria mais um quando todos estão em uso, e senão o
+  app usa o `tapctl.exe` do próprio OpenVPN
 - **Túnel completo e túnel dividido juntos**: cada cartão mostra se a VPN
   leva **toda a internet** (túnel completo) ou **só a rede da VPN** (túnel
   dividido) — o app descobre isso na primeira conexão, pelas rotas que o
   servidor criou. Uma de cada pode ficar ligada ao mesmo tempo, em qualquer
-  ordem: antes de ligar uma VPN de túnel dividido, o app fixa uma rota direta
-  (pela rede local) até o servidor dela, para que ela não caia quando a de
-  túnel completo ligar (detalhes em [Rotas](#rotas))
+  ordem: a VPN de túnel completo mantém os servidores das outras fora dela,
+  para que elas não caiam quando ela ligar (detalhes em [Rotas](#rotas))
 - **Aviso de rotas conflitantes**: se duas contas mandam toda a internet pela
   VPN, o app avisa antes de conectar a segunda — só a última funcionaria como
   rota padrão
@@ -96,15 +101,16 @@ periódicas e as reconexões após queda funcionam sem intervenção.
 O OpenVPN Community **não** precisa estar instalado: o app instala sozinho se
 faltar (e usa o que já existe na máquina, quando existe).
 
-O aplicativo roda **como administrador** — o OpenVPN precisa disso para criar
-a conexão de rede. O próprio executável pede a permissão ao Windows (tela do
-UAC) ao abrir; se por algum motivo rodar sem ela, um aviso aparece na janela.
+O aplicativo **não** roda como administrador. O Windows só pede essa permissão
+quando é preciso instalar o OpenVPN e nos outros casos ocasionais descritos em
+[Permissão de administrador](#permissão-de-administrador).
 
 ## Para usuários
 
 1. Baixe o `VPN.exe` na página de [Releases](../../releases)
-2. Abra o programa e aceite a permissão de administrador
-3. Se aparecer o aviso amarelo, clique em **Instalar agora** e aguarde ~1 min
+2. Abra o programa
+3. Se aparecer o aviso amarelo, clique em **Instalar agora**, aceite a
+   permissão de administrador do Windows e aguarde ~1 min
 4. Em **Contas** › **Nova conta**, escolha o `.ovpn`, informe o usuário e a
    autenticação (ou use **Importar QR Code…**) e salve
 5. Na tela inicial, ligue o interruptor da conta
@@ -137,14 +143,17 @@ Estrutura:
 - [`main.rs`](rust/src/main.rs) — interface (egui/WGPU com DirectX 12) e bandeja
 - [`engine.rs`](rust/src/engine.rs) — contas e conexões ativas (usado pela
   interface e pelo menu da bandeja)
-- [`vpn.rs`](rust/src/vpn.rs) — uma conexão: thread do `openvpn.exe`, interface
-  de gerenciamento e criação de adaptador sob demanda
+- [`vpn.rs`](rust/src/vpn.rs) — uma conexão: `openvpn.exe` iniciado pelo
+  serviço, interface de gerenciamento e criação de adaptador sob demanda
+- [`service.rs`](rust/src/service.rs) — cliente do serviço interativo do
+  OpenVPN (protocolo por named pipe) e autorização do usuário
+- [`elevate.rs`](rust/src/elevate.rs) — permissão de administrador sob demanda (UAC)
 - [`state.rs`](rust/src/state.rs) — estado compartilhado por conta e log;
   escrito pelas conexões, lido pela interface e pela bandeja
 - [`accounts.rs`](rust/src/accounts.rs) — modelo de conta, autenticação e validação
 - [`dpapi.rs`](rust/src/dpapi.rs) — criptografia e persistência
-- [`routes.rs`](rust/src/routes.rs) — rota direta até o servidor e detecção do
-  tipo de túnel (IP Helper do Windows)
+- [`routes.rs`](rust/src/routes.rs) — rotas que mantêm outras VPNs fora de um
+  túnel completo e detecção do tipo de túnel (IP Helper do Windows)
 - [`i18n.rs`](rust/src/i18n.rs) — idioma (português/inglês) e as macros
   `tr!`/`trf!` dos textos
 - [`update.rs`](rust/src/update.rs) — verificação e instalação de
@@ -156,11 +165,10 @@ Variáveis úteis para desenvolvimento e testes:
 
 | Variável | Efeito |
 |---|---|
-| `VPN_DEV_NOUAC=1` (no build) | gera um executável que não pede UAC |
 | `VPN_OPENVPN` | aponta um `openvpn.exe` alternativo (inexistente = força o aviso) |
 | `VPN_INSTANCE` | separa uma instância de teste do app de uso diário |
 | `VPN_SKIP_HINT` | não mostra o aviso da primeira ida à bandeja |
-| `VPN_SCREENSHOT` | capturas de tela da documentação: esconde o aviso de administrador; com `accounts`, `edit`, `new` ou `update`, abre direto naquela tela |
+| `VPN_SCREENSHOT` | capturas de tela da documentação: com `accounts`, `edit`, `new` ou `update`, abre direto naquela tela |
 | `VPN_LANGUAGE` | força `pt` ou `en` (capturas de tela) |
 | `VPN_UPDATE_URL` | consulta outro endereço no lugar da API do GitHub (testes da atualização) |
 | `APPDATA` | redirecione para uma pasta de teste para não tocar nas contas reais |
@@ -192,6 +200,22 @@ Ao clicar em **Atualizar agora**:
 4. o app desconecta as VPNs, fecha, e a versão nova abre sozinha e religa as
    contas que estavam conectadas.
 
+## Permissão de administrador
+
+Mudar a rede (rotas, endereço do adaptador virtual, DNS) exige permissão de
+administrador no Windows. Em vez de rodar como administrador, o app pede ao
+**serviço interativo do OpenVPN** (`OpenVPNServiceInteractive`, instalado junto
+com o OpenVPN) que inicie o `openvpn.exe`; o serviço faz essas mudanças e as
+desfaz quando a conexão termina. É assim que o OpenVPN GUI também funciona.
+
+O Windows só pede a permissão de administrador (UAC) nestes casos:
+
+| Quando | Por quê |
+|---|---|
+| Instalar o OpenVPN (uma vez) | o instalador oficial altera o sistema |
+| Primeira conexão de uma conta do Windows que **não** é administradora (uma vez) | o serviço só deixa membros do grupo Administradores ou do grupo `OpenVPN Administrators` iniciarem configurações de qualquer pasta; o app oferece incluir a conta nesse grupo |
+| Todos os adaptadores de rede em uso e o OpenVPN sem conseguir criar outro (raro) | o app executa o `tapctl.exe` do OpenVPN para criá-lo |
+
 ## Rotas
 
 Há dois tipos de VPN:
@@ -203,15 +227,17 @@ Há dois tipos de VPN:
   resto usa a internet normal.
 
 Uma de cada ao mesmo tempo funciona, porque o Windows usa sempre a rota mais
-específica. O problema era outro: ao ligar a de túnel completo, o tráfego da de
-túnel dividido **até o próprio servidor** passava a ir por dentro da outra, e
-ela caía. Por isso, antes de iniciar uma VPN que não é de túnel completo, o app
-cria uma rota `/32` para cada servidor do `.ovpn` pelo gateway da rede local
-(ignorando adaptadores de VPN). A rota é removida quando a conexão termina,
-nunca sobrevive a uma reinicialização do Windows e é refeita se a rede local
-mudar durante a conexão (ex.: notebook que troca de Wi-Fi). Servidores com
-endereço interno (10.x, 172.16–31.x, 192.168.x, 100.64–127.x) não são fixados:
-só são alcançáveis pela própria rede local ou por dentro de outra VPN.
+específica. Há um porém: quando a de túnel completo conecta, o tráfego da de
+túnel dividido **até o próprio servidor** passaria a ir por dentro da outra, e
+ela cairia. Por isso, uma VPN de túnel completo é iniciada com uma rota a mais
+para cada servidor das outras VPNs conectadas, pelo gateway da rede local
+(`--route <ip> 255.255.255.255 net_gateway`). Quem cria essas rotas é o próprio
+OpenVPN (pelo serviço interativo — o app não tem permissão de administrador),
+que também as refaz se a rede mudar ao reconectar (ex.: notebook que troca de
+Wi-Fi) e as remove ao desconectar. Uma VPN de túnel dividido ligada *depois* da
+de túnel completo simplesmente passa por dentro dela. Servidores com endereço
+interno (10.x, 172.16–31.x, 192.168.x, 100.64–127.x) não são excluídos: só são
+alcançáveis pela própria rede local ou por dentro de outra VPN.
 
 O tipo de cada VPN é descoberto ao conectar: o app olha se o adaptador dela
 recebeu a rota padrão (ou as duas metades `0.0.0.0/1` + `128.0.0.0/1`). Isso
@@ -264,8 +290,8 @@ instalados › OpenVPN**.
 
 ## Conferir o download
 
-O `VPN.exe` ainda não tem assinatura digital (por isso o Windows mostra
-"Editor desconhecido" e o SmartScreen pode avisar na primeira execução). Toda
+O `VPN.exe` ainda não tem assinatura digital (por isso o SmartScreen pode
+avisar na primeira execução). Toda
 versão é gerada exclusivamente pelo [workflow de release](.github/workflows/release.yml)
 no GitHub Actions, a partir do código deste repositório, e é revisada antes de
 ser publicada.

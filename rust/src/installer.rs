@@ -8,18 +8,16 @@
 //! VPN icon to the tray and confuse the user.
 
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::mpsc::Sender;
 
 /// Embedded MSI (empty when the build did not find assets/openvpn.msi).
 static MSI: &[u8] = include_bytes!(env!("VPN_MSI"));
 pub const MSI_VERSION: &str = env!("VPN_MSI_VERSION");
 
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// Installed components (names checked against the MSI Feature table).
 const FEATURES: &str = "ADDLOCAL=OpenVPN,OpenVPN.Service,Drivers,Drivers.TAPWindows6";
 /// msiexec: success, but Windows asks for a restart.
-const ERROR_SUCCESS_REBOOT_REQUIRED: i32 = 3010;
+const ERROR_SUCCESS_REBOOT_REQUIRED: u32 = 3010;
 
 pub enum Event {
     /// Finished: Ok(restart_recommended) or Err(message).
@@ -34,8 +32,8 @@ fn log_path() -> PathBuf {
     crate::dpapi::app_dir().join("openvpn-install.log")
 }
 
-/// Installs OpenVPN in the background. Requires administrator privileges
-/// (the whole app already runs elevated through the manifest).
+/// Installs OpenVPN in the background. Windows asks for administrator
+/// permission (UAC) at this moment.
 pub fn install_in_background(tx: Sender<Event>, ctx: eframe::egui::Context) {
     std::thread::spawn(move || {
         let result = install();
@@ -60,32 +58,32 @@ fn install() -> Result<bool, String> {
     let log = log_path();
     let _ = std::fs::create_dir_all(crate::dpapi::app_dir());
 
-    let status = Command::new("msiexec.exe")
-        .arg("/i")
-        .arg(&msi_path)
-        .args(["/qn", "/norestart", FEATURES, "/l*v"])
-        .arg(&log)
-        .creation_flags(CREATE_NO_WINDOW)
-        .status();
+    // the app runs as a regular user: Windows asks for administrator
+    // permission (UAC) for the installation only
+    let msiexec = PathBuf::from(std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into()))
+        .join("System32")
+        .join("msiexec.exe");
+    let params = format!(
+        "/i {} /qn /norestart {FEATURES} /l*v {}",
+        crate::service::argumento(&msi_path.to_string_lossy()),
+        crate::service::argumento(&log.to_string_lossy())
+    );
+    let resultado = crate::elevate::executar_como_admin(&msiexec, &params);
 
     let _ = std::fs::remove_file(&msi_path);
 
-    let status = status.map_err(|e| trf!("Não consegui executar o msiexec: {e}", "Could not run msiexec: {e}"))?;
-    match status.code() {
-        Some(0) => Ok(false),
-        Some(ERROR_SUCCESS_REBOOT_REQUIRED) => Ok(true),
-        Some(1602) => Err(tr!("A instalação foi cancelada.", "The installation was cancelled.").into()),
-        Some(code) => Err(trf!(
+    match resultado? {
+        0 => Ok(false),
+        ERROR_SUCCESS_REBOOT_REQUIRED => Ok(true),
+        1602 => Err(tr!("A instalação foi cancelada.", "The installation was cancelled.").into()),
+        code => Err(trf!(
             "A instalação falhou (código {code}).\nDetalhes em:\n{}",
             "The installation failed (code {code}).\nDetails in:\n{}",
             log.display()
         )),
-        None => Err(tr!("A instalação foi interrompida.", "The installation was interrupted.").into()),
     }
 }
 
-// creation_flags comes from the Windows extension of Command
-use std::os::windows::process::CommandExt;
 
 #[cfg(test)]
 mod tests {

@@ -58,16 +58,21 @@ without user intervention.
   some connecting or reconnecting; gray: none connected), the tooltip lists
   each connection, and the right-click menu toggles each account, plus
   "Disconnect all" and "Exit"
+- **No administrator rights**: the app runs as a regular user and asks
+  OpenVPN's interactive service to start each connection — the same approach
+  as OpenVPN GUI. Windows only asks for administrator permission for occasional
+  tasks: installing OpenVPN, authorizing a non-administrator Windows account
+  once, or creating an extra network adapter (details in
+  [Administrator rights](#administrator-rights))
 - **Simultaneous connections**: each one needs its own virtual network
-  adapter; if all are in use, the app creates another one (with OpenVPN's own
-  `tapctl.exe`) and retries
+  adapter; OpenVPN 2.7 creates another one when all are in use, and the app
+  falls back to OpenVPN's own `tapctl.exe` otherwise
 - **Full tunnel and split tunnel together**: each card shows whether the VPN
   carries **all traffic** (full tunnel) or **only the VPN's network** (split
   tunnel) — the app learns this on the first connection, from the routes the
-  server created. One of each can be on at the same time, in any order: before
-  starting a split-tunnel VPN, the app pins a direct route (through the local
-  network) to its server, so it does not drop when the full-tunnel one
-  connects (details in [Routes](#routes))
+  server created. One of each can be on at the same time, in any order: the
+  full-tunnel VPN keeps the other VPNs' servers outside it, so they do not
+  drop when it connects (details in [Routes](#routes))
 - **Conflicting routes warning**: if two accounts send all traffic through
   the VPN, the app warns before connecting the second one — only the last one
   would work as the default route
@@ -102,16 +107,16 @@ without user intervention.
 OpenVPN Community does **not** need to be installed: the app installs it if
 missing (and uses the existing installation when there is one).
 
-The app runs **as administrator** — OpenVPN needs this to create the network
-connection. The executable itself asks Windows for permission (UAC prompt)
-when it starts; if for some reason it runs without it, a notice appears in
-the window.
+The app does **not** run as administrator. Windows only asks for that
+permission when OpenVPN needs to be installed, and in the other occasional
+cases described in [Administrator rights](#administrator-rights).
 
 ## For users
 
 1. Download `VPN.exe` from the [Releases](../../releases) page
-2. Open it and accept the administrator prompt
-3. If the yellow notice appears, click **Install now** and wait ~1 minute
+2. Open it
+3. If the yellow notice appears, click **Install now**, accept the Windows
+   administrator prompt and wait ~1 minute
 4. Under **Accounts** › **New account**, pick the `.ovpn` file, enter the
    username and authentication (or use **Import QR code…**) and save
 5. On the home screen, switch the account's toggle on
@@ -145,15 +150,18 @@ Structure:
   and tray
 - [`engine.rs`](rust/src/engine.rs) — accounts and active connections (used by
   the interface and by the tray menu)
-- [`vpn.rs`](rust/src/vpn.rs) — one connection: `openvpn.exe` thread,
-  management interface and on-demand adapter creation
+- [`vpn.rs`](rust/src/vpn.rs) — one connection: `openvpn.exe` started
+  through the service, management interface and on-demand adapter creation
+- [`service.rs`](rust/src/service.rs) — client of the OpenVPN interactive
+  service (named pipe protocol) and user authorization
+- [`elevate.rs`](rust/src/elevate.rs) — administrator rights on demand (UAC)
 - [`state.rs`](rust/src/state.rs) — shared per-account state and log;
   written by the connections, read by the interface and the tray
 - [`accounts.rs`](rust/src/accounts.rs) — account model, authentication and
   validation
 - [`dpapi.rs`](rust/src/dpapi.rs) — encryption and persistence
-- [`routes.rs`](rust/src/routes.rs) — direct route to the server and tunnel
-  type detection (Windows IP Helper)
+- [`routes.rs`](rust/src/routes.rs) — routes that keep other VPNs outside a
+  full tunnel, and tunnel type detection (Windows IP Helper)
 - [`i18n.rs`](rust/src/i18n.rs) — language (Portuguese/English) and the
   `tr!`/`trf!` text macros
 - [`update.rs`](rust/src/update.rs) — checking for and installing
@@ -165,11 +173,10 @@ Useful variables for development and testing:
 
 | Variable | Effect |
 |---|---|
-| `VPN_DEV_NOUAC=1` (at build time) | builds an executable that does not request UAC |
 | `VPN_OPENVPN` | points to an alternative `openvpn.exe` (non-existent = forces the notice) |
 | `VPN_INSTANCE` | separates a test instance from the everyday app |
 | `VPN_SKIP_HINT` | does not show the first-time tray notification |
-| `VPN_SCREENSHOT` | documentation screenshots: hides the administrator notice; with `accounts`, `edit`, `new` or `update`, opens directly on that screen |
+| `VPN_SCREENSHOT` | documentation screenshots: with `accounts`, `edit`, `new` or `update`, opens directly on that screen |
 | `VPN_LANGUAGE` | forces `pt` or `en` (screenshots) |
 | `VPN_UPDATE_URL` | queries another address instead of the GitHub API (update tests) |
 | `APPDATA` | redirect to a test folder so the real accounts are not touched |
@@ -201,6 +208,23 @@ When the user clicks **Update now**:
 4. the app disconnects the VPNs and closes; the new version opens by itself
    and reconnects the accounts that were connected.
 
+## Administrator rights
+
+Changing the network (routes, the virtual adapter address, DNS) requires
+administrator rights in Windows. Instead of running as administrator, the app
+asks the **OpenVPN interactive service** (`OpenVPNServiceInteractive`,
+installed with OpenVPN) to start `openvpn.exe`; the service performs those
+changes itself and undoes them when the connection ends. This is how OpenVPN
+GUI works too.
+
+Windows asks for administrator permission (UAC) only in these cases:
+
+| When | Why |
+|---|---|
+| Installing OpenVPN (once) | the official installer changes the system |
+| First connection of a Windows account that is **not** an administrator (once) | the service only lets members of the Administrators group or of the `OpenVPN Administrators` group start configs from any folder; the app offers to add the account to that group |
+| All network adapters in use and OpenVPN cannot create another one (rare) | the app runs OpenVPN's `tapctl.exe` to create it |
+
 ## Routes
 
 There are two kinds of VPN:
@@ -212,16 +236,18 @@ There are two kinds of VPN:
   else uses the regular internet connection.
 
 One of each at the same time works, because Windows always uses the most
-specific route. The problem was a different one: when the full-tunnel VPN
-connected, the split-tunnel VPN's traffic **to its own server** started going
-through the other VPN, and it dropped. So, before starting a VPN that is not a
-full tunnel, the app creates a `/32` route to each server in the `.ovpn` file
-through the local network gateway (ignoring VPN adapters). The route is
-removed when the connection ends, never survives a Windows restart, and is
-recreated if the local network changes while connected (e.g. a laptop moving
-to another Wi-Fi). Servers with internal addresses (10.x, 172.16–31.x,
-192.168.x, 100.64–127.x) are not pinned: they are only reachable through
-the local network itself or through another VPN.
+specific route. There is one catch: when the full-tunnel VPN connects, the
+split-tunnel VPN's traffic **to its own server** would start going through
+the other VPN, and it would drop. So a full-tunnel VPN is started with one
+extra route per server of the other connected VPNs, through the local network
+gateway (`--route <ip> 255.255.255.255 net_gateway`). OpenVPN itself adds
+these routes (through its interactive service — the app has no administrator
+rights), follows network changes on reconnect (e.g. a laptop moving to
+another Wi-Fi) and removes them when it disconnects. A split-tunnel VPN
+connected *after* the full-tunnel one simply goes through it. Servers with
+internal addresses (10.x, 172.16–31.x, 192.168.x, 100.64–127.x) are not
+excluded: they are only reachable through the local network itself or through
+another VPN.
 
 Each VPN's type is learned when it connects: the app checks whether its
 adapter received the default route (or both halves `0.0.0.0/1` +
@@ -274,8 +300,8 @@ If OpenVPN Community was installed by the app, it can be removed under
 
 ## Verifying the download
 
-`VPN.exe` is not digitally signed yet (that is why Windows shows "Unknown
-publisher" and SmartScreen may warn on the first run). Every release is built
+`VPN.exe` is not digitally signed yet (that is why SmartScreen may warn on
+the first run). Every release is built
 exclusively by the [release workflow](.github/workflows/release.yml) on
 GitHub Actions, from the source code in this repository, and is reviewed
 before being published.

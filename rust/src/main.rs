@@ -8,11 +8,13 @@ mod i18n;
 mod update;
 mod accounts;
 mod dpapi;
+mod elevate;
 mod state;
 mod installer;
 mod engine;
 mod qr;
 mod routes;
+mod service;
 mod single;
 mod totp;
 mod vpn;
@@ -918,7 +920,6 @@ struct App {
     editor: Option<Editor>,
     qr_open: bool,
     janela_atualizacao: bool,
-    admin: bool,
     openvpn_missing: bool,
     last_ovpn_check: Instant,
     installing: bool,
@@ -968,18 +969,6 @@ impl App {
         create_tick_window();
 
         let (install_tx, install_rx) = std::sync::mpsc::channel();
-        // VPN_SCREENSHOT: only for the documentation screenshots, taken with the
-        // development build (which deliberately runs without elevation)
-        let admin = engine::eh_administrador() || std::env::var_os("VPN_SCREENSHOT").is_some();
-        if !admin {
-            state::log(
-                "",
-                tr!(
-                    "Atenção: o aplicativo não está como administrador.",
-                    "Warning: the app is not running as administrator."
-                ),
-            );
-        }
         if APOS_ATUALIZAR.load(Ordering::SeqCst) {
             state::log(
                 "",
@@ -1011,7 +1000,6 @@ impl App {
             editor: None,
             qr_open: false,
             janela_atualizacao: false,
-            admin,
             openvpn_missing: find_openvpn().is_none(),
             last_ovpn_check: Instant::now(),
             installing: false,
@@ -1265,19 +1253,6 @@ impl App {
                 });
             ui.add_space(8.0);
         };
-
-        if !self.admin {
-            faixa(
-                ui,
-                tr!(
-                    "O aplicativo não está como administrador.\n\
-                     Feche e abra de novo aceitando a permissão do Windows.",
-                    "The app is not running as administrator.\n\
-                     Close it and open it again, accepting the Windows prompt."
-                ),
-                &mut |_| {},
-            );
-        }
 
         if self.openvpn_missing {
             let embutido = installer::is_available();
@@ -2231,6 +2206,14 @@ impl eframe::App for App {
 }
 
 fn main() -> eframe::Result<()> {
+    // elevated helper (started by service::autorizar_usuario_atual, after the
+    // UAC prompt): authorizes the user in the OpenVPN service and exits
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(i) = args.iter().position(|a| a == service::ARG_AUTHORIZE) {
+        let usuario = args.get(i + 1).cloned().unwrap_or_default();
+        std::process::exit(service::adicionar_ao_grupo(&usuario));
+    }
+
     // after "Update now", the previous version opens this one passing its own
     // PID and the accounts that were on
     let args: Vec<String> = std::env::args().collect();
@@ -2258,6 +2241,17 @@ fn main() -> eframe::Result<()> {
         return Ok(()); // another instance is already running and was notified
     }
     update::limpar_restos();
+    // openvpn.exe left behind by a previous run that did not end normally
+    let orfaos = vpn::encerrar_orfaos();
+    if orfaos > 0 {
+        state::log(
+            "",
+            trf!(
+                "{orfaos} conexão(ões) deixada(s) por uma execução anterior foi(ram) encerrada(s).",
+                "{orfaos} connection(s) left behind by a previous run were closed."
+            ),
+        );
+    }
     i18n::aplicar(engine::get().idioma());
 
     let (rgba, w, h) = load_icon_rgba(include_bytes!("../assets/app_64.png"));

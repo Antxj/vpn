@@ -28,7 +28,6 @@ $remapFlags = @(
     "--remap-path-prefix=$targetRoot=target"
 )
 $env:CARGO_ENCODED_RUSTFLAGS = $remapFlags -join $separator
-Remove-Item Env:VPN_DEV_NOUAC -ErrorAction SilentlyContinue
 
 # --- official OpenVPN installer embedded in the executable -----------------
 # The MSI is not in the repository: it is downloaded from the official server

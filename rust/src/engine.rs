@@ -14,7 +14,6 @@ use std::time::{Duration, Instant};
 /// Why a connection cannot be started.
 #[derive(Debug, PartialEq)]
 pub enum ErroConexao {
-    SemAdministrador,
     OpenVpnAusente,
     ContaInexistente,
     /// Message ready for the user (incomplete data, conflict etc.).
@@ -24,15 +23,6 @@ pub enum ErroConexao {
 impl ErroConexao {
     pub fn mensagem(&self) -> String {
         match self {
-            ErroConexao::SemAdministrador => tr!(
-                "O aplicativo não está sendo executado como administrador, e o \
-                 OpenVPN precisa disso para criar a conexão de rede.\n\n\
-                 Feche e abra de novo aceitando o pedido de permissão do Windows.",
-                "The app is not running as administrator, and OpenVPN needs that \
-                 to create the network connection.\n\n\
-                 Close it and open it again, accepting the Windows permission prompt."
-            )
-            .into(),
             ErroConexao::OpenVpnAusente => tr!(
                 "O OpenVPN Community não está instalado neste computador.",
                 "OpenVPN Community is not installed on this computer."
@@ -57,16 +47,6 @@ pub fn get() -> &'static Motor {
         settings: Mutex::new(dpapi::load_settings()),
         conexoes: Mutex::new(HashMap::new()),
     })
-}
-
-/// Checks whether the process is elevated (the manifest requests administrator;
-/// the check covers runs outside the normal path, such as the dev build).
-pub fn eh_administrador() -> bool {
-    #[link(name = "shell32")]
-    extern "system" {
-        fn IsUserAnAdmin() -> i32;
-    }
-    unsafe { IsUserAnAdmin() != 0 }
 }
 
 impl Motor {
@@ -210,9 +190,6 @@ impl Motor {
     pub fn conectar(&self, id: &str, openvpn: Option<PathBuf>) -> Result<(), ErroConexao> {
         if self.ativa(id) {
             return Ok(());
-        }
-        if !eh_administrador() {
-            return Err(ErroConexao::SemAdministrador);
         }
         let openvpn = openvpn.ok_or(ErroConexao::OpenVpnAusente)?;
         let conta = self.conta(id).ok_or(ErroConexao::ContaInexistente)?;

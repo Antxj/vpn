@@ -6,17 +6,17 @@
 1 24 "assets/app.manifest"
 
 1 VERSIONINFO
-FILEVERSION 1,0,3,0
-PRODUCTVERSION 1,0,3,0
+FILEVERSION 1,1,0,0
+PRODUCTVERSION 1,1,0,0
 BEGIN
   BLOCK "StringFileInfo"
   BEGIN
     BLOCK "041604B0"
     BEGIN
       VALUE "FileDescription", "VPN - OpenVPN with automatic TOTP token"
-      VALUE "FileVersion", "1.0.3"
+      VALUE "FileVersion", "1.1.0"
       VALUE "ProductName", "VPN"
-      VALUE "ProductVersion", "1.0.3"
+      VALUE "ProductVersion", "1.1.0"
       VALUE "OriginalFilename", "VPN.exe"
     END
   END

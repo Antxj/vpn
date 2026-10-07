@@ -1,6 +1,6 @@
 ﻿[package]
 name = "vpn"
-version = "1.0.3"
+version = "1.1.0"
 edition = "2021"
 description = "Connects to one or more OpenVPN VPNs with an automatic Google Authenticator (TOTP) token"
 license = "GPL-3.0-or-later"
