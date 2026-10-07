@@ -70,7 +70,12 @@ without user intervention.
   [Administrator rights](#administrator-rights))
 - **Simultaneous connections**: each one needs its own virtual network
   adapter; OpenVPN 2.7 creates another one when all are in use, and the app
-  falls back to OpenVPN's own `tapctl.exe` otherwise
+  falls back to OpenVPN's own `tapctl.exe` otherwise. If the fast adapter
+  (DCO) is held by another OpenVPN — such as the OpenVPN Windows service —
+  the app reconnects with the normal adapter by itself
+- **Server not responding**: after 30 seconds without an answer from the
+  server, the card shows "the server is not responding" and the log explains
+  it; the app keeps trying and the notice goes away when the server answers
 - **Full tunnel and split tunnel together**: each card shows whether the VPN
   carries **all traffic** (full tunnel) or **only the VPN's network** (split
   tunnel) — the app learns this on the first connection, from the routes the

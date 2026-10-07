@@ -65,7 +65,12 @@ periódicas e as reconexões após queda funcionam sem intervenção.
   [Permissão de administrador](#permissão-de-administrador))
 - **Conexões simultâneas**: cada uma precisa de um adaptador de rede virtual
   próprio; o OpenVPN 2.7 cria mais um quando todos estão em uso, e senão o
-  app usa o `tapctl.exe` do próprio OpenVPN
+  app usa o `tapctl.exe` do próprio OpenVPN. Se o adaptador rápido (DCO)
+  estiver ocupado por outro OpenVPN — como o serviço do OpenVPN do Windows —,
+  o app reconecta sozinho com o adaptador normal
+- **Servidor sem resposta**: depois de 30 segundos sem resposta do servidor,
+  o cartão mostra "o servidor não responde" e o log explica; o app continua
+  tentando e o aviso some quando o servidor responde
 - **Túnel completo e túnel dividido juntos**: cada cartão mostra se a VPN
   leva **toda a internet** (túnel completo) ou **só a rede da VPN** (túnel
   dividido) — o app descobre isso na primeira conexão, pelas rotas que o
