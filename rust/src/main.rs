@@ -920,6 +920,50 @@ fn cor_situacao(s: Situacao, padrao: egui::Color32) -> egui::Color32 {
     }
 }
 
+/// Accounts that appear in the log, in the order of the account list.
+fn abas_do_log(contas: &[Conta]) -> Vec<String> {
+    let entradas = state::log_entradas();
+    contas
+        .iter()
+        .map(|c| c.nome_exibicao().to_string())
+        .filter(|n| entradas.iter().any(|e| &e.origem == n))
+        .collect()
+}
+
+/// Soft color of each account in the log (by position in the list).
+fn cor_da_conta(i: usize, dark: bool) -> egui::Color32 {
+    const ESCURO: [(u8, u8, u8); 5] =
+        [(0x60, 0xa5, 0xfa), (0x34, 0xd3, 0x99), (0xfb, 0xbf, 0x24), (0xf4, 0x72, 0xb6), (0xa7, 0x8b, 0xfa)];
+    const CLARO: [(u8, u8, u8); 5] =
+        [(0x1d, 0x4e, 0xd8), (0x04, 0x78, 0x57), (0xb4, 0x53, 0x09), (0xbe, 0x18, 0x5d), (0x6d, 0x28, 0xd9)];
+    let (r, g, b) = if dark { ESCURO[i % 5] } else { CLARO[i % 5] };
+    egui::Color32::from_rgb(r, g, b)
+}
+
+/// Discreet log tab: small text, underlined when selected. Returns true when clicked.
+fn aba(ui: &mut egui::Ui, texto: &str, ativa: bool, cor: Option<egui::Color32>, dark: bool) -> bool {
+    let cor_texto = if ativa {
+        cor.unwrap_or_else(|| ui.visuals().strong_text_color())
+    } else {
+        label_color(dark)
+    };
+    let mut rich = egui::RichText::new(texto).small().color(cor_texto);
+    if ativa {
+        rich = rich.strong();
+    }
+    let r = ui
+        .add(egui::Label::new(rich).sense(egui::Sense::click()))
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    if ativa {
+        let y = r.rect.bottom() + 2.0;
+        ui.painter().line_segment(
+            [egui::pos2(r.rect.left(), y), egui::pos2(r.rect.right(), y)],
+            egui::Stroke::new(2.0_f32, cor.unwrap_or(ACCENT)),
+        );
+    }
+    r.clicked()
+}
+
 /// Background of the cards (accounts, settings sections).
 fn fundo_cartao(dark: bool) -> egui::Color32 {
     if dark {
@@ -1007,6 +1051,8 @@ struct App {
     tela: Tela,
     editor: Option<Editor>,
     qr_open: bool,
+    /// Log tab: None = all accounts, Some(name) = only that account.
+    aba_log: Option<String>,
     janela_atualizacao: bool,
     openvpn_missing: bool,
     last_ovpn_check: Instant,
@@ -1119,6 +1165,7 @@ impl App {
             tela: if m.contas().is_empty() { Tela::Contas } else { Tela::Inicio },
             editor: None,
             qr_open: false,
+            aba_log: None,
             janela_atualizacao: false,
             openvpn_missing: find_openvpn().is_none(),
             last_ovpn_check: Instant::now(),
@@ -1138,6 +1185,11 @@ impl App {
             Ok("new") => app.abrir_editor(Conta::nova(), true),
             Ok("update") => app.janela_atualizacao = true,
             Ok("settings") => app.tela = Tela::Configuracoes,
+            // "log:N": log tab of the N-th account (screenshots)
+            Ok(v) if v.starts_with("log:") => {
+                let i: usize = v[4..].parse().unwrap_or(0);
+                app.aba_log = m.contas().get(i).map(|c| c.nome_exibicao().to_string());
+            }
             _ => {}
         }
         app
@@ -1453,7 +1505,9 @@ impl App {
         let fundo_cartao = fundo_cartao(self.dark);
         // the list takes the top space and the log is anchored at the bottom
         let varias_ativas = contas.iter().filter(|c| m.ativa(&c.id)).count() > 1;
-        let altura_log = 150.0 + if varias_ativas { 44.0 } else { 0.0 };
+        let altura_log = 150.0
+            + if varias_ativas { 44.0 } else { 0.0 }
+            + if abas_do_log(&contas).len() >= 2 { 26.0 } else { 0.0 };
         let altura_lista = (ui.available_height() - altura_log).max(120.0);
         let mut erro: Option<ErroConexao> = None;
 
@@ -1569,9 +1623,22 @@ impl App {
         self.painel_log(ui);
     }
 
-    fn painel_log(&self, ui: &mut egui::Ui) {
+    /// Connection log. With two or more accounts in it, discreet tabs on top:
+    /// "All" (every account, each name in its own color) or one account only.
+    fn painel_log(&mut self, ui: &mut egui::Ui) {
+        let dark = self.dark;
+        let contas = engine::get().contas();
+        let abas = abas_do_log(&contas);
+        if self.aba_log.as_ref().is_some_and(|a| !abas.contains(a)) {
+            self.aba_log = None;
+        }
+        let entradas: Vec<state::Entrada> = state::log_entradas()
+            .into_iter()
+            .filter(|e| self.aba_log.as_ref().is_none_or(|a| &e.origem == a))
+            .collect();
+
         egui::Frame::none()
-            .fill(if self.dark {
+            .fill(if dark {
                 egui::Color32::from_rgb(0x14, 0x16, 0x1a)
             } else {
                 egui::Color32::from_rgb(0xff, 0xff, 0xff)
@@ -1580,25 +1647,64 @@ impl App {
             .inner_margin(egui::Margin::same(8.0))
             .show(ui, |ui| {
                 ui.set_min_height(110.0);
+                if abas.len() >= 2 {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 12.0;
+                        if aba(ui, tr!("Todas", "All"), self.aba_log.is_none(), None, dark) {
+                            self.aba_log = None;
+                        }
+                        for (i, nome) in abas.iter().enumerate() {
+                            let ativa = self.aba_log.as_deref() == Some(nome.as_str());
+                            if aba(ui, nome, ativa, Some(cor_da_conta(i, dark)), dark) {
+                                self.aba_log = Some(nome.clone());
+                            }
+                        }
+                    });
+                    ui.add_space(4.0);
+                }
                 egui::ScrollArea::vertical()
-                    .id_salt("log")
+                    // each tab keeps its own scroll position
+                    .id_salt(("log", self.aba_log.clone()))
                     .max_height(120.0)
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
-                        let linhas = state::log_linhas();
-                        if linhas.is_empty() {
+                        if entradas.is_empty() {
                             ui.label(
                                 egui::RichText::new(tr!(
                                     "As mensagens das conexões aparecem aqui.",
                                     "Connection messages appear here."
                                 ))
                                     .small()
-                                    .color(label_color(self.dark)),
+                                    .color(label_color(dark)),
                             );
                         }
-                        for line in linhas {
-                            ui.label(egui::RichText::new(line).monospace().small());
+                        // same size and font as the log always had (small text)
+                        let fonte = egui::FontId::proportional(12.0);
+                        let normal = ui.visuals().text_color();
+                        for e in &entradas {
+                            let mut linha = egui::text::LayoutJob::default();
+                            let mut parte = |texto: &str, cor: egui::Color32| {
+                                linha.append(
+                                    texto,
+                                    0.0,
+                                    egui::TextFormat::simple(fonte.clone(), cor),
+                                );
+                            };
+                            parte(&format!("{} ", e.hora), label_color(dark));
+                            // in "All", the account name in its color; in one
+                            // account's tab the name would be redundant
+                            if self.aba_log.is_none() && !e.origem.is_empty() {
+                                let cor = abas
+                                    .iter()
+                                    .position(|n| n == &e.origem)
+                                    .map(|i| cor_da_conta(i, dark))
+                                    .unwrap_or(normal);
+                                parte(&format!("[{}] ", e.origem), cor);
+                            }
+                            parte(&e.msg, normal);
+                            linha.wrap.max_width = ui.available_width();
+                            ui.label(linha);
                         }
                     });
             });

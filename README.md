@@ -48,6 +48,9 @@ without user intervention.
 
 - **Multiple accounts**: each with its own toggle on the home screen, status,
   IP and traffic; several can be connected at the same time
+- **Log per account**: with two or more accounts in the log, discreet tabs
+  show everything together ("All", each account name in its own color) or one
+  account at a time
 - **Four authentication methods** per account: token (Google
   Authenticator), fixed password, password + token (the password followed by
   the 6-digit code), or certificate only — picked automatically when the

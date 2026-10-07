@@ -73,7 +73,27 @@ impl EstadoConta {
 #[derive(Default)]
 struct Global {
     contas: HashMap<String, EstadoConta>,
-    log: VecDeque<String>,
+    log: VecDeque<Entrada>,
+}
+
+/// One log line: time, account name ("" = the app itself) and message.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Entrada {
+    pub hora: String,
+    pub origem: String,
+    pub msg: String,
+}
+
+#[cfg(test)]
+impl Entrada {
+    /// "HH:MM:SS [account] message" (or without the account, for the app).
+    pub fn texto(&self) -> String {
+        if self.origem.is_empty() {
+            format!("{} {}", self.hora, self.msg)
+        } else {
+            format!("{} [{}] {}", self.hora, self.origem, self.msg)
+        }
+    }
 }
 
 type Aviso = Box<dyn Fn() + Send + Sync>;
@@ -147,10 +167,10 @@ pub fn remover(conta: &str) {
 
 /// Appends a line to the log, prefixed with the time and the account name.
 pub fn log(origem: &str, msg: impl AsRef<str>) {
-    let linha = if origem.is_empty() {
-        format!("{} {}", hora_local(), msg.as_ref())
-    } else {
-        format!("{} [{origem}] {}", hora_local(), msg.as_ref())
+    let linha = Entrada {
+        hora: hora_local(),
+        origem: origem.to_string(),
+        msg: msg.as_ref().to_string(),
     };
     com(|g| {
         g.log.push_back(linha);
@@ -161,7 +181,13 @@ pub fn log(origem: &str, msg: impl AsRef<str>) {
     avisar();
 }
 
+#[cfg(test)]
 pub fn log_linhas() -> Vec<String> {
+    com(|g| g.log.iter().map(Entrada::texto).collect())
+}
+
+/// Log lines with the account kept apart (for the per-account tabs).
+pub fn log_entradas() -> Vec<Entrada> {
     com(|g| g.log.iter().cloned().collect())
 }
 
@@ -304,6 +330,15 @@ mod tests {
         assert!(!linhas.iter().any(|l| l.starts_with("Cliente X:")));
         remover(&a);
         remover(&b);
+    }
+
+    #[test]
+    fn log_guarda_a_conta_separada() {
+        log("Conta Separada", "linha de teste");
+        let e = log_entradas().into_iter().rev().find(|e| e.origem == "Conta Separada").unwrap();
+        assert_eq!(e.msg, "linha de teste");
+        assert_eq!(e.hora.len(), 8); // HH:MM:SS
+        assert!(e.texto().ends_with("[Conta Separada] linha de teste"));
     }
 
     #[test]

@@ -44,6 +44,8 @@ periódicas e as reconexões após queda funcionam sem intervenção.
 
 - **Várias contas**: cada uma com seu interruptor na tela inicial, status,
   IP e tráfego; dá para conectar várias ao mesmo tempo
+- **Log por conta**: com duas ou mais contas no log, abas discretas mostram
+  tudo junto ("Todas", com o nome de cada conta numa cor) ou uma conta por vez
 - **Quatro formas de autenticação** por conta: token (Google Authenticator),
   senha fixa, senha + token (a senha seguida do código de 6 dígitos) ou só
   certificado — escolhida sozinha quando o `.ovpn` não tem `auth-user-pass`,
