@@ -30,6 +30,38 @@ static PROCESSOS: Mutex<Vec<(String, u32)>> = Mutex::new(Vec::new());
 /// Server address of each connected account (account id, IP).
 static SERVIDORES: Mutex<Vec<(String, Ipv4Addr)>> = Mutex::new(Vec::new());
 
+/// Why a connection attempt should be repeated.
+#[derive(Debug, PartialEq)]
+enum Repetir {
+    /// No free network adapter: create one (tapctl) and try again.
+    CriarAdaptador(&'static str),
+    /// The fast adapter (ovpn-dco) is held by another OpenVPN (e.g. the
+    /// OpenVPN Windows service): connect again with the normal adapter.
+    SemDco,
+}
+
+/// Accounts that use the normal adapter (--disable-dco) for the rest of this
+/// session, because the fast one was taken. Not saved: on the next start the
+/// fast adapter may be free again.
+static SEM_DCO: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn usar_sem_dco(conta_id: &str) -> bool {
+    SEM_DCO.lock().unwrap().iter().any(|c| c == conta_id)
+}
+
+fn lembrar_sem_dco(conta_id: &str) {
+    let mut lista = SEM_DCO.lock().unwrap();
+    if !lista.iter().any(|c| c == conta_id) {
+        lista.push(conta_id.to_string());
+    }
+}
+
+/// OpenVPN state meaning the fast adapter could not be opened: OpenVPN 2.7
+/// would keep restarting forever ("CreateFile failed on ovpn-dco device").
+fn dco_ocupado(estado: &str, detalhe: &str) -> bool {
+    estado == "RECONNECTING" && detalhe == "dco-connect-error"
+}
+
 fn arquivo_de_pids() -> PathBuf {
     crate::dpapi::app_dir().join("openvpn.pids")
 }
@@ -206,14 +238,25 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
     state::definir(&conta.id, Situacao::Conectando, None);
     std::thread::spawn(move || {
         let nome = conta.nome_exibicao().to_string();
-        // up to 2 attempts: the second one only happens if a network adapter was missing
-        for tentativa in 0..2 {
-            let Some(hwid) = run(&conta, &nome, &stop2) else {
+        // up to 3 attempts: the extra ones only happen when a network adapter
+        // was missing or the fast adapter (DCO) was taken by another OpenVPN
+        let mut adaptador_criado = false;
+        for _ in 0..3 {
+            let Some(repetir) = run(&conta, &nome, &stop2) else {
                 break;
             };
-            if tentativa > 0 || stop2.load(Ordering::SeqCst) {
+            if stop2.load(Ordering::SeqCst) {
                 break;
             }
+            let hwid = match repetir {
+                Repetir::SemDco => {
+                    lembrar_sem_dco(&conta.id);
+                    continue;
+                }
+                Repetir::CriarAdaptador(_) if adaptador_criado => break,
+                Repetir::CriarAdaptador(hwid) => hwid,
+            };
+            adaptador_criado = true;
             state::log(
                 &nome,
                 tr!(
@@ -336,9 +379,9 @@ fn perguntar_autorizacao() -> bool {
         == rfd::MessageDialogResult::Yes
 }
 
-/// Runs one connection attempt. Returns Some(hwid) when OpenVPN exited
-/// because no network adapter was free (worth trying again).
-fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<&'static str> {
+/// Runs one connection attempt. Returns Some(reason) when it is worth trying
+/// again (no free network adapter, or the fast adapter taken).
+fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
     let config = PathBuf::from(&conta.config);
     let port = free_port();
     let cfg_dir = config.parent().map(PathBuf::from).unwrap_or_default();
@@ -358,6 +401,11 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<&'static str> {
         "--connect-retry 5 --log".to_string(),
         service::argumento(&log_file.to_string_lossy()),
     ];
+    let sem_dco = usar_sem_dco(&conta.id);
+    if sem_dco {
+        // the fast adapter (DCO) was taken earlier in this session
+        opcoes.push("--disable-dco".to_string());
+    }
     // Full tunnel: the servers of the other connected VPNs stay outside it
     // (through the local network), so those VPNs do not drop when this one
     // takes over the default route. OpenVPN adds and removes these routes.
@@ -400,6 +448,7 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<&'static str> {
     let mut tentativa_desde = Instant::now();
     let mut respondeu = false;
     let mut avisado = false;
+    let mut refazer_sem_dco = false;
 
     loop {
         if !respondeu && !avisado && tentativa_desde.elapsed() >= SEM_RESPOSTA {
@@ -565,6 +614,19 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<&'static str> {
                 let state = parts.get(1).unwrap_or(&"").to_string();
                 let ip = parts.get(3).filter(|s| !s.is_empty()).map(|s| s.to_string());
                 let situacao = state::situacao_do_openvpn(&state);
+                if !sem_dco && dco_ocupado(&state, parts.get(2).unwrap_or(&"")) {
+                    refazer_sem_dco = true;
+                    state::log(
+                        nome,
+                        tr!(
+                            "O adaptador de rede rápido (DCO) está em uso por outro OpenVPN; \
+                             conectando de novo com o adaptador normal.",
+                            "The fast network adapter (DCO) is in use by another OpenVPN; \
+                             connecting again with the normal adapter."
+                        ),
+                    );
+                    break;
+                }
                 if state::servidor_respondeu(&state) {
                     respondeu = true;
                     if avisado {
@@ -596,6 +658,17 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<&'static str> {
                 state::log(nome, line);
             }
         }
+        if refazer_sem_dco {
+            // stop this attempt; start() connects again without DCO
+            let mut enviado = false;
+            if let Some(s) = stream.as_mut() {
+                enviado = s.write_all(b"signal SIGTERM\r\n").is_ok();
+            }
+            if !enviado {
+                processo.matar();
+            }
+            break;
+        }
     }
 
     let code = processo.esperar(Duration::from_secs(20));
@@ -612,10 +685,13 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<&'static str> {
     if pedido_de_parada {
         return None;
     }
+    if refazer_sem_dco {
+        return Some(Repetir::SemDco);
+    }
     // it exited by itself: the OpenVPN log explains why
     let texto_log = std::fs::read_to_string(&log_file).unwrap_or_default();
     if let Some(hwid) = adaptador_em_falta(&texto_log) {
-        return Some(hwid);
+        return Some(Repetir::CriarAdaptador(hwid));
     }
     for erro in erros_do_log(&texto_log).into_iter().rev().take(3).collect::<Vec<_>>().into_iter().rev() {
         state::log(nome, erro);
@@ -626,6 +702,20 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detecta_adaptador_rapido_ocupado() {
+        // >STATE:1791413018,RECONNECTING,dco-connect-error,,,,,
+        assert!(dco_ocupado("RECONNECTING", "dco-connect-error"));
+        assert!(!dco_ocupado("RECONNECTING", "ping-restart"));
+        assert!(!dco_ocupado("CONNECTED", "SUCCESS"));
+        let id = format!("teste-dco-{}", std::process::id());
+        assert!(!usar_sem_dco(&id));
+        lembrar_sem_dco(&id);
+        lembrar_sem_dco(&id);
+        assert!(usar_sem_dco(&id));
+        assert_eq!(SEM_DCO.lock().unwrap().iter().filter(|c| **c == id).count(), 1);
+    }
 
     #[test]
     fn bytecount_taxas() {
