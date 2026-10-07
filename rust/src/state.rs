@@ -43,6 +43,8 @@ pub struct EstadoConta {
     pub situacao: Situacao,
     pub ip: Option<String>,
     pub trafego: Option<Traffic>,
+    /// Connecting for a while and the server has not answered yet.
+    pub sem_resposta: bool,
 }
 
 impl Default for EstadoConta {
@@ -51,6 +53,7 @@ impl Default for EstadoConta {
             situacao: Situacao::Desconectado,
             ip: None,
             trafego: None,
+            sem_resposta: false,
         }
     }
 }
@@ -59,6 +62,16 @@ impl EstadoConta {
     pub fn texto(&self) -> String {
         match self.situacao {
             Situacao::Desconectado => tr!("Desconectado", "Disconnected").into(),
+            Situacao::Conectando if self.sem_resposta => tr!(
+                "Conectando... o servidor não responde",
+                "Connecting... the server is not responding"
+            )
+            .into(),
+            Situacao::Reconectando if self.sem_resposta => tr!(
+                "Reconectando... o servidor não responde",
+                "Reconnecting... the server is not responding"
+            )
+            .into(),
             Situacao::Conectando => tr!("Conectando...", "Connecting...").into(),
             Situacao::Reconectando => tr!("Reconectando...", "Reconnecting...").into(),
             Situacao::Desconectando => tr!("Desconectando...", "Disconnecting...").into(),
@@ -118,6 +131,25 @@ fn avisar() {
 }
 
 /// Maps the OpenVPN state (>STATE:) to the account status.
+/// The OpenVPN state shows the server has answered: from authentication
+/// on, the connection is past the "is anybody there?" stage.
+pub fn servidor_respondeu(estado: &str) -> bool {
+    matches!(
+        estado,
+        "AUTH" | "AUTH_PENDING" | "GET_CONFIG" | "ASSIGN_IP" | "ADD_ROUTES" | "CONNECTED"
+    )
+}
+
+/// Turns the "server not responding" notice of the account on or off.
+pub fn marcar_sem_resposta(conta: &str, sem_resposta: bool) {
+    com(|g| {
+        if let Some(e) = g.contas.get_mut(conta) {
+            e.sem_resposta = sem_resposta;
+        }
+    });
+    avisar();
+}
+
 pub fn situacao_do_openvpn(estado: &str) -> Situacao {
     match estado {
         "CONNECTED" => Situacao::Conectado,
@@ -131,6 +163,10 @@ pub fn definir(conta: &str, situacao: Situacao, ip: Option<String>) {
     com(|g| {
         let e = g.contas.entry(conta.to_string()).or_default();
         e.situacao = situacao;
+        // the notice only makes sense while trying to connect
+        if !matches!(situacao, Situacao::Conectando | Situacao::Reconectando) {
+            e.sem_resposta = false;
+        }
         if situacao == Situacao::Conectado {
             if ip.is_some() {
                 e.ip = ip;
@@ -330,6 +366,25 @@ mod tests {
         assert!(!linhas.iter().any(|l| l.starts_with("Cliente X:")));
         remover(&a);
         remover(&b);
+    }
+
+    #[test]
+    fn aviso_de_servidor_sem_resposta() {
+        let c = id("sem-resposta");
+        definir(&c, Situacao::Conectando, None);
+        assert_eq!(obter(&c).texto(), "Conectando...");
+        marcar_sem_resposta(&c, true);
+        assert_eq!(obter(&c).texto(), "Conectando... o servidor não responde");
+        // connected (or any state outside "trying"): the notice goes away
+        definir(&c, Situacao::Conectado, Some("10.0.0.9".into()));
+        assert!(!obter(&c).sem_resposta);
+        remover(&c);
+
+        assert!(servidor_respondeu("AUTH"));
+        assert!(servidor_respondeu("CONNECTED"));
+        for ainda_nao in ["CONNECTING", "TCP_CONNECT", "WAIT", "RESOLVE", "RECONNECTING"] {
+            assert!(!servidor_respondeu(ainda_nao), "{ainda_nao}");
+        }
     }
 
     #[test]

@@ -19,6 +19,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const MAX_AUTH_FAILURES: u32 = 3;
+/// Time without an answer from the server before the "not responding" notice.
+const SEM_RESPOSTA: Duration = Duration::from_secs(30);
 
 // ---- bookkeeping shared by the connections ---------------------------------
 
@@ -394,8 +396,25 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<&'static str> {
     let mut auth_failures: u32 = 0;
     let mut last_count: Option<(Instant, u64, u64)> = None;
     let mut pedido_de_parada = false;
+    // "is the server answering?": restarted on every (re)connection attempt
+    let mut tentativa_desde = Instant::now();
+    let mut respondeu = false;
+    let mut avisado = false;
 
     loop {
+        if !respondeu && !avisado && tentativa_desde.elapsed() >= SEM_RESPOSTA {
+            avisado = true;
+            state::marcar_sem_resposta(&conta.id, true);
+            state::log(
+                nome,
+                tr!(
+                    "O servidor não está respondendo há 30 segundos. Confira a internet \
+                     ou se o servidor está no ar; o app continua tentando.",
+                    "The server has not responded for 30 seconds. Check the internet \
+                     connection or whether the server is up; the app keeps trying."
+                ),
+            );
+        }
         if processo.terminou().is_some() {
             break;
         }
@@ -546,6 +565,19 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<&'static str> {
                 let state = parts.get(1).unwrap_or(&"").to_string();
                 let ip = parts.get(3).filter(|s| !s.is_empty()).map(|s| s.to_string());
                 let situacao = state::situacao_do_openvpn(&state);
+                if state::servidor_respondeu(&state) {
+                    respondeu = true;
+                    if avisado {
+                        avisado = false;
+                        state::marcar_sem_resposta(&conta.id, false);
+                    }
+                } else if state == "RECONNECTING" {
+                    // a new attempt: the 30 seconds start over
+                    tentativa_desde = Instant::now();
+                    respondeu = false;
+                    avisado = false;
+                    state::marcar_sem_resposta(&conta.id, false);
+                }
                 if situacao == Situacao::Conectado {
                     auth_failures = 0;
                     registrar_tipo_de_tunel(conta, nome, ip.as_deref());
