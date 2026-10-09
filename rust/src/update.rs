@@ -105,6 +105,10 @@ pub fn limpar_resultado() {
     }
 }
 
+pub fn pagina_repositorio() -> String {
+    format!("https://github.com/{REPOSITORIO}")
+}
+
 pub fn pagina_releases() -> String {
     format!("https://github.com/{REPOSITORIO}/releases")
 }

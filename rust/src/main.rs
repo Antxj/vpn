@@ -964,6 +964,43 @@ fn aba(ui: &mut egui::Ui, texto: &str, ativa: bool, cor: Option<egui::Color32>, 
     r.clicked()
 }
 
+/// Discreet "source code" link beside the settings title: GitHub mark and
+/// small gray text, which light up on hover. Opens the repository.
+fn link_codigo_fonte(ui: &mut egui::Ui, logo: &egui::TextureHandle, dark: bool) {
+    let texto = tr!("Código-fonte", "Source code");
+    let url = update::pagina_repositorio();
+    let galley = egui::WidgetText::from(egui::RichText::new(texto).small()).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Small,
+    );
+    let icone = 14.0;
+    let espaco = 5.0;
+    let tamanho = egui::vec2(icone + espaco + galley.size().x, icone.max(galley.size().y));
+    let (rect, resposta) = ui.allocate_exact_size(tamanho, egui::Sense::click());
+    resposta.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Link, true, texto));
+    if ui.is_rect_visible(rect) {
+        let cor = if resposta.hovered() {
+            ui.visuals().strong_text_color()
+        } else {
+            label_color(dark)
+        };
+        let r_icone =
+            egui::Rect::from_min_size(egui::pos2(rect.left(), rect.center().y - icone / 2.0), egui::vec2(icone, icone));
+        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+        ui.painter().image(logo.id(), r_icone, uv, cor);
+        let pos = egui::pos2(r_icone.right() + espaco, rect.center().y - galley.size().y / 2.0);
+        ui.painter().galley_with_override_text_color(pos, galley, cor);
+    }
+    let resposta = resposta
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(format!("{url}\n{}", tr!("Licença GPL-3.0", "GPL-3.0 license")));
+    if resposta.clicked() {
+        let _ = open::that(&url);
+    }
+}
+
 /// Background of the cards (accounts, settings sections).
 fn fundo_cartao(dark: bool) -> egui::Color32 {
     if dark {
@@ -1059,6 +1096,8 @@ struct App {
     installing: bool,
     install_rx: Receiver<installer::Event>,
     install_tx: Sender<installer::Event>,
+    /// GitHub mark (white; tinted with the theme's text color).
+    logo_github: egui::TextureHandle,
 }
 
 impl App {
@@ -1159,6 +1198,13 @@ impl App {
         update::ao_mudar(move || ctx.request_repaint());
         update::iniciar_verificacao_periodica(|| engine::get().verifica_atualizacoes());
 
+        let (rgba, w, h) = load_icon_rgba(include_bytes!("../assets/github_28.png"));
+        let logo_github = cc.egui_ctx.load_texture(
+            "logo_github",
+            egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba),
+            egui::TextureOptions::LINEAR,
+        );
+
         let mut app = Self {
             dark,
             // no accounts: open straight on the sign-up screen
@@ -1172,6 +1218,7 @@ impl App {
             installing: false,
             install_rx,
             install_tx,
+            logo_github,
         };
         // VPN_SCREENSHOT=accounts|edit|new opens straight on that screen (documentation
         // screenshots and visual check of each screen)
@@ -1871,7 +1918,12 @@ impl App {
         let fraco = label_color(dark);
         let pequeno = |t: &str| egui::RichText::new(t).small().color(fraco);
 
-        ui.label(egui::RichText::new(tr!("Configurações", "Settings")).size(18.0).strong());
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(tr!("Configurações", "Settings")).size(18.0).strong());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                link_codigo_fonte(ui, &self.logo_github, dark);
+            });
+        });
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {

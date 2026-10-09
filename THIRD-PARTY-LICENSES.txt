@@ -62,3 +62,10 @@ The full texts of these licenses ship with the epaint_default_fonts
 package:
 
     https://github.com/emilk/egui/tree/master/crates/epaint_default_fonts/fonts
+
+GitHub mark
+-----------
+The small GitHub mark next to the "Source code" link comes from Primer
+Octicons (mark-github-24, https://github.com/primer/octicons). The mark is
+a trademark of GitHub, Inc. and is used only to link to this project's
+repository, as GitHub's logo guidelines allow.
