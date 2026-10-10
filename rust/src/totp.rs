@@ -1,5 +1,6 @@
 //! TOTP (RFC 6238), Google Authenticator flavor: HMAC-SHA1, 30 s, 6 digits.
 
+use hmac::digest::KeyInit;
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
 use std::time::{SystemTime, UNIX_EPOCH};
