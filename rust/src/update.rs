@@ -70,6 +70,25 @@ pub enum Estado {
 
 static ESTADO: Mutex<Estado> = Mutex::new(Estado::Nada);
 static AVISO: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
+static NOVA_VERSAO: OnceLock<Box<dyn Fn(&str) + Send + Sync>> = OnceLock::new();
+/// Last version announced by `ao_achar_versao` (each one only once).
+static ANUNCIADA: Mutex<Option<String>> = Mutex::new(None);
+
+/// Function called when the automatic check finds a new version (once per
+/// version): the app shows a Windows notification.
+pub fn ao_achar_versao(f: impl Fn(&str) + Send + Sync + 'static) {
+    let _ = NOVA_VERSAO.set(Box::new(f));
+}
+
+/// True only the first time this version is seen.
+fn primeira_vez(numero: &str) -> bool {
+    let mut anunciada = ANUNCIADA.lock().unwrap();
+    if anunciada.as_deref() == Some(numero) {
+        return false;
+    }
+    *anunciada = Some(numero.to_string());
+    true
+}
 
 /// Function called on every state change (to repaint the UI).
 pub fn ao_mudar(f: impl Fn() + Send + Sync + 'static) {
@@ -148,7 +167,15 @@ fn verificar(manual: bool) {
         definir(Estado::Verificando);
     }
     match consultar(&url_api(), VERSAO_ATUAL) {
-        Ok(Some(v)) => definir(Estado::Disponivel(v)),
+        Ok(Some(v)) => {
+            let numero = v.numero.clone();
+            definir(Estado::Disponivel(v));
+            if !manual && primeira_vez(&numero) {
+                if let Some(f) = NOVA_VERSAO.get() {
+                    f(&numero);
+                }
+            }
+        }
         Ok(None) if manual => definir(Estado::EmDia),
         Err(e) if manual => definir(Estado::FalhaVerificacao(e)),
         _ => {}

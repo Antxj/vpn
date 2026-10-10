@@ -61,6 +61,11 @@ static ORIGINAL_MAIN_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 static ORIGINAL_MAIN_EXSTYLE: AtomicIsize = AtomicIsize::new(0);
 /// Request from the tray menu to open the update window.
 static ABRIR_ATUALIZACAO: AtomicBool = AtomicBool::new(false);
+/// The last notification shown was about a new version: clicking it opens
+/// the update window (other notifications just open the app).
+static AVISO_E_DE_VERSAO: AtomicBool = AtomicBool::new(false);
+/// Original window procedure of the tray icon's hidden window (0 = not hooked).
+static ORIGINAL_TRAY_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 /// Started by Windows with "start minimized": hide the window on the first frame.
 static INICIAR_OCULTO: AtomicBool = AtomicBool::new(false);
 /// This start came from an update done by the app itself.
@@ -272,6 +277,7 @@ unsafe fn show_tray_notification(texto: &str, alerta: bool) -> bool {
         notification.Anonymous.uTimeout = 4_000;
         copy_notification_text(&mut notification.szInfoTitle, APP_TITLE);
         copy_notification_text(&mut notification.szInfo, texto);
+        AVISO_E_DE_VERSAO.store(false, Ordering::SeqCst);
         return Shell_NotifyIconW(NIM_MODIFY, &notification) != 0;
     }
 
@@ -386,6 +392,56 @@ unsafe extern "system" fn main_wnd_proc(
         CallWindowProcW(previous as *const c_void, hwnd, msg, wparam, lparam)
     } else {
         DefWindowProcW(hwnd, msg, wparam, lparam)
+    }
+}
+
+/// Callback message of the tray-icon crate (pinned by Cargo.lock, like the
+/// window class above). If it ever changes, clicking a notification just
+/// stops opening the app - the rest of the tray keeps working.
+const WM_USER_TRAYICON: u32 = 6002;
+/// The user clicked the notification balloon (lParam of the callback).
+const NIN_BALLOONUSERCLICK: isize = 0x0405;
+
+unsafe extern "system" fn tray_wnd_proc(hwnd: *mut c_void, msg: u32, wparam: usize, lparam: isize) -> isize {
+    if msg == WM_USER_TRAYICON && lparam == NIN_BALLOONUSERCLICK {
+        if AVISO_E_DE_VERSAO.swap(false, Ordering::SeqCst) {
+            ABRIR_ATUALIZACAO.store(true, Ordering::SeqCst);
+        }
+        show_main_window();
+        return 0;
+    }
+    let previous = ORIGINAL_TRAY_WNDPROC.load(Ordering::SeqCst);
+    CallWindowProcW(previous as *const c_void, hwnd, msg, wparam, lparam)
+}
+
+/// Clicking one of the app's notifications opens the window (and, for a new
+/// version, the update window). The tray-icon crate ignores that click.
+fn install_tray_click_hook() {
+    if ORIGINAL_TRAY_WNDPROC.load(Ordering::SeqCst) != 0 {
+        return;
+    }
+    unsafe {
+        let hwnd = find_own_tray_window();
+        if !hwnd.is_null() {
+            let previous = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, tray_wnd_proc as *const () as usize as isize);
+            ORIGINAL_TRAY_WNDPROC.store(previous, Ordering::SeqCst);
+        }
+    }
+}
+
+/// Windows notification when the automatic check finds a new version.
+fn notificar_nova_versao(numero: &str) {
+    if cfg!(test) {
+        return;
+    }
+    let texto = trf!(
+        "Versão {numero} disponível. Clique aqui para atualizar.",
+        "Version {numero} is available. Click here to update."
+    );
+    unsafe {
+        if show_tray_notification(&texto, false) {
+            AVISO_E_DE_VERSAO.store(true, Ordering::SeqCst);
+        }
     }
 }
 
@@ -1347,6 +1403,7 @@ impl App {
         }
         let ctx = cc.egui_ctx.clone();
         update::ao_mudar(move || ctx.request_repaint());
+        update::ao_achar_versao(notificar_nova_versao);
         update::iniciar_verificacao_periodica(|| engine::get().verifica_atualizacoes());
 
         let (rgba, w, h) = load_icon_rgba(include_bytes!("../assets/github_28.png"));
@@ -2838,6 +2895,7 @@ fn eframe_ctx() -> egui::Context {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         install_main_window_hook();
+        install_tray_click_hook();
         if MAIN_WNDPROC_INSTALLED.load(Ordering::SeqCst) && INICIAR_OCULTO.swap(false, Ordering::SeqCst) {
             unsafe {
                 let hwnd = find_main_window();
