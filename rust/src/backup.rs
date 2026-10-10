@@ -284,7 +284,7 @@ fn cifrar(dados: &[u8], senha: &str) -> Result<Vec<u8>, String> {
     let cifra = Aes256Gcm::new_from_slice(&k).map_err(|e| e.to_string());
     k.fill(0);
     let cifrado = cifra?
-        .encrypt(Nonce::from_slice(&nonce), Payload { msg: dados, aad: &saida })
+        .encrypt(&Nonce::from(nonce), Payload { msg: dados, aad: &saida })
         .map_err(|e| e.to_string())?;
     saida.extend_from_slice(&cifrado);
     Ok(saida)
@@ -300,7 +300,7 @@ fn decifrar(dados: &[u8], senha: &str) -> Result<Vec<u8>, String> {
     }
     let (cabecalho, cifrado) = dados.split_at(TAM_CABECALHO);
     let sal = &cabecalho[8..8 + TAM_SAL];
-    let nonce = &cabecalho[8 + TAM_SAL..8 + TAM_SAL + TAM_NONCE];
+    let nonce: [u8; TAM_NONCE] = cabecalho[8 + TAM_SAL..8 + TAM_SAL + TAM_NONCE].try_into().unwrap();
     let numero = |i: usize| {
         let ini = 8 + TAM_SAL + TAM_NONCE + i * 4;
         u32::from_le_bytes(cabecalho[ini..ini + 4].try_into().unwrap())
@@ -314,7 +314,7 @@ fn decifrar(dados: &[u8], senha: &str) -> Result<Vec<u8>, String> {
     let cifra = Aes256Gcm::new_from_slice(&k).map_err(|e| e.to_string());
     k.fill(0);
     cifra?
-        .decrypt(Nonce::from_slice(nonce), Payload { msg: cifrado, aad: cabecalho })
+        .decrypt(&Nonce::from(nonce), Payload { msg: cifrado, aad: cabecalho })
         .map_err(|_| arquivo_invalido())
 }
 
@@ -327,6 +327,19 @@ mod tests {
         let d = std::env::temp_dir().join(format!("vpn-backup-{nome}-{}", crate::accounts::novo_id()));
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    /// AES-256-GCM known answer (NIST GCM spec, test cases 13 and 14): backups
+    /// made by earlier versions keep opening after library updates.
+    #[test]
+    fn aes_gcm_segue_o_padrao() {
+        let cifra = Aes256Gcm::new_from_slice(&[0u8; 32]).unwrap();
+        let nonce = Nonce::from([0u8; TAM_NONCE]);
+        let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
+        let vazio = cifra.encrypt(&nonce, Payload { msg: b"", aad: b"" }).unwrap();
+        assert_eq!(hex(&vazio), "530f8afbc74536b9a963b4f1c4cb738b");
+        let zeros = cifra.encrypt(&nonce, Payload { msg: &[0u8; 16], aad: b"" }).unwrap();
+        assert_eq!(hex(&zeros), "cea7403d4d606b6e074ec5d3baf39d18d0d1c8a799996bf0265b98b5d48ab919");
     }
 
     #[test]

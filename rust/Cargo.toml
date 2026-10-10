@@ -25,7 +25,7 @@ url = "2"
 open = "5"
 # account backup: password-derived key (Argon2id) + authenticated encryption (AES-256-GCM)
 argon2 = { version = "0.5", default-features = false, features = ["alloc"] }
-aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+aes-gcm = { version = "0.11", default-features = false, features = ["aes", "alloc"] }
 getrandom = "0.4"
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry", "Win32_Networking_WinHttp", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Security_WinTrust", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
 
