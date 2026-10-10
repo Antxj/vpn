@@ -252,6 +252,25 @@ fn erros_do_log(log: &str) -> Vec<String> {
         .collect()
 }
 
+/// Log line of a ">STATE:" event (fields after the prefix, split by commas).
+/// CONNECTED also shows the IP received and the server: "State: CONNECTED -
+/// IP 10.8.0.6 - server 200.0.0.1:1194".
+fn texto_do_estado(partes: &[&str]) -> String {
+    let estado = partes.get(1).copied().unwrap_or("");
+    let campo = |i: usize| partes.get(i).copied().filter(|v| !v.is_empty());
+    let mut texto = trf!("Estado: {estado}", "State: {estado}");
+    if estado == "CONNECTED" {
+        if let Some(ip) = campo(3) {
+            texto.push_str(&format!("  -  IP {ip}"));
+        }
+        if let Some(servidor) = campo(4) {
+            let porta = campo(5).map(|p| format!(":{p}")).unwrap_or_default();
+            texto.push_str(&trf!("  -  servidor {servidor}{porta}", "  -  server {servidor}{porta}"));
+        }
+    }
+    texto
+}
+
 /// OpenVPN's own log for the account (rewritten on every connection).
 pub fn log_path(conta_id: &str) -> PathBuf {
     crate::dpapi::app_dir()
@@ -716,7 +735,7 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
                     registrar_servidor(&conta.id, None);
                 }
                 state::definir(&conta.id, situacao, ip);
-                state::log(nome, trf!("Estado: {state}", "State: {state}"));
+                state::log(nome, texto_do_estado(&parts));
             } else if line.starts_with(">INFO:")
                 || line.starts_with("ERROR:")
                 || line.starts_with(">FATAL:")
@@ -777,6 +796,21 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn estado_conectado_mostra_ip_e_servidor() {
+        let linha = "1791413018,CONNECTED,SUCCESS,192.168.200.2,200.130.0.172,1194,,,";
+        let partes: Vec<&str> = linha.split(',').collect();
+        assert_eq!(
+            texto_do_estado(&partes),
+            "Estado: CONNECTED  -  IP 192.168.200.2  -  servidor 200.130.0.172:1194"
+        );
+        let partes: Vec<&str> = "1791413018,WAIT,,,,,,".split(',').collect();
+        assert_eq!(texto_do_estado(&partes), "Estado: WAIT");
+        // missing fields: only what is there
+        let partes: Vec<&str> = "1791413018,CONNECTED,SUCCESS,10.8.0.6".split(',').collect();
+        assert_eq!(texto_do_estado(&partes), "Estado: CONNECTED  -  IP 10.8.0.6");
+    }
 
     #[test]
     fn aviso_de_queda_so_depois_de_um_tempo() {
