@@ -3836,7 +3836,7 @@ dependencies = [
  "base32",
  "eframe",
  "embed-resource",
- "getrandom 0.2.17",
+ "getrandom 0.4.3",
  "hmac",
  "image",
  "open",
