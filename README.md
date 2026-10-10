@@ -121,7 +121,8 @@ without user intervention.
 - The original `.ovpn` files are used without any modification
 - **Unobtrusive updates**: once a day the app checks this repository's
   [Releases](../../releases); when there is a new version, a link appears at
-  the top of the window and an item in the tray menu. "Update now"
+  the top of the window, an item in the tray menu and a Windows notification
+  (clicking it opens the update). "Update now"
   downloads, verifies and replaces the executable, reopens the
   app and reconnects the VPNs that were on (details in [Updates](#updates))
 

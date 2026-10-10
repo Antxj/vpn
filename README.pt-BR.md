@@ -114,7 +114,8 @@ periódicas e as reconexões após queda funcionam sem intervenção.
 - Os arquivos `.ovpn` originais são usados sem nenhuma modificação
 - **Atualização discreta**: uma vez por dia o app consulta as
   [Releases](../../releases) deste repositório; havendo versão nova, aparece
-  um link no topo da janela e um item no menu da bandeja. "Atualizar agora"
+  um link no topo da janela, um item no menu da bandeja e uma notificação do
+  Windows (clicar nela abre a atualização). "Atualizar agora"
   baixa, confere e troca o executável, reabre o app e reconecta as VPNs que
   estavam ligadas (detalhes em [Atualizações](#atualizações))
 
