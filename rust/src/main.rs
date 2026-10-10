@@ -585,6 +585,11 @@ fn apply_style(ctx: &egui::Context, dark: bool) {
     visuals.selection.bg_fill = ACCENT;
     visuals.hyperlink_color = ACCENT;
 
+    // the app's own theme, whatever the Windows one: egui keeps a dark and a
+    // light style and, by default, picks one by the Windows theme (with
+    // Windows in light mode it showed egui's plain style with dark cards)
+    let tema = if dark { egui::Theme::Dark } else { egui::Theme::Light };
+    ctx.set_theme(tema);
     let mut style = (*ctx.style()).clone();
     style.visuals = visuals;
     use egui::{FontFamily, FontId, TextStyle};
@@ -601,7 +606,7 @@ fn apply_style(ctx: &egui::Context, dark: bool) {
     // egui's default (500 px) is wider than the 480 px window: long tooltips
     // were cut at the window edge
     style.spacing.tooltip_width = 320.0;
-    ctx.set_style(style);
+    ctx.set_style_of(tema, style);
 }
 
 // --------------------------------- tray (main/Win32 thread only) ---
@@ -3096,6 +3101,27 @@ mod tests {
     }
 
     /// Regression (v1.0.2): tooltips wider than the window were cut at its edge.
+    /// The app's theme wins over the Windows one: with Windows in light mode
+    /// the dark theme stayed half applied (dark cards on egui's plain style).
+    #[test]
+    fn tema_do_app_vale_com_qualquer_tema_do_windows() {
+        for sistema in [egui::Theme::Light, egui::Theme::Dark] {
+            for escuro in [true, false] {
+                let ctx = egui::Context::default();
+                apply_style(&ctx, escuro);
+                let entrada = egui::RawInput {
+                    system_theme: Some(sistema),
+                    ..Default::default()
+                };
+                let _ = ctx.run(entrada, |_| {});
+                let estilo = ctx.style();
+                assert_eq!(estilo.visuals.dark_mode, escuro, "{sistema:?}, dark {escuro}");
+                // our fonts, not egui's defaults
+                assert_eq!(estilo.text_styles[&egui::TextStyle::Body].size, 15.0);
+            }
+        }
+    }
+
     #[test]
     fn tooltips_fit_inside_the_window() {
         let ctx = egui::Context::default();
