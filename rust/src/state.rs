@@ -289,27 +289,40 @@ pub fn resumo(contas: &[(String, String)]) -> (Agregado, Vec<String>) {
     (agregado, linhas)
 }
 
-/// Short HH:MM:SS timestamp via GetLocalTime.
-pub fn hora_local() -> String {
-    #[repr(C)]
-    #[derive(Default)]
-    struct SystemTimeW {
-        year: u16,
-        month: u16,
-        dow: u16,
-        day: u16,
-        hour: u16,
-        minute: u16,
-        second: u16,
-        ms: u16,
-    }
+/// SYSTEMTIME (local time from GetLocalTime).
+#[repr(C)]
+#[derive(Default)]
+struct SystemTimeW {
+    year: u16,
+    month: u16,
+    dow: u16,
+    day: u16,
+    hour: u16,
+    minute: u16,
+    second: u16,
+    ms: u16,
+}
+
+fn agora_local() -> SystemTimeW {
     #[link(name = "kernel32")]
     extern "system" {
         fn GetLocalTime(t: *mut SystemTimeW);
     }
     let mut t = SystemTimeW::default();
     unsafe { GetLocalTime(&mut t) };
+    t
+}
+
+/// Short HH:MM:SS timestamp.
+pub fn hora_local() -> String {
+    let t = agora_local();
     format!("{:02}:{:02}:{:02}", t.hour, t.minute, t.second)
+}
+
+/// "YYYY-MM-DD HH:MM" (local time).
+pub fn data_e_hora_local() -> String {
+    let t = agora_local();
+    format!("{:04}-{:02}-{:02} {:02}:{:02}", t.year, t.month, t.day, t.hour, t.minute)
 }
 
 #[cfg(test)]

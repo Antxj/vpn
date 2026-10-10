@@ -23,6 +23,8 @@ Of particular interest:
 
 - exposure of saved accounts, passwords or TOTP seeds (stored with Windows
   DPAPI in `%APPDATA%\VPN\contas.dat`);
+- the account backup file (`.vpnbackup`: Argon2id + AES-256-GCM) and the
+  import of its `.ovpn` files;
 - the update mechanism (download, SHA-256 and signature checks, executable
   replacement);
 - the OpenVPN management interface, which listens only on `127.0.0.1`;

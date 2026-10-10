@@ -45,7 +45,13 @@ periódicas e as reconexões após queda funcionam sem intervenção.
 - **Várias contas**: cada uma com seu interruptor na tela inicial, status,
   IP e tráfego; dá para conectar várias ao mesmo tempo
 - **Log por conta**: com duas ou mais contas no log, abas discretas mostram
-  tudo junto ("Todas", com o nome de cada conta numa cor) ou uma conta por vez
+  tudo junto ("Todas", com o nome de cada conta numa cor) ou uma conta por vez.
+  **Copiar** coloca a aba aberta na área de transferência, pronta para mandar
+  a quem dá suporte — senhas, seeds, usuários e o nome do computador ficam
+  escondidos; a aba de uma conta traz também o final do log do próprio OpenVPN
+- **Aviso de queda**: quando uma conexão que estava no ar fica 15 segundos
+  fora, uma notificação do Windows avisa, e outra quando ela volta (dá para
+  desligar em **Configurações** ⚙ › Avisos; respeita o "não incomodar")
 - **Quatro formas de autenticação** por conta: token (Google Authenticator),
   senha fixa, senha + token (a senha seguida do código de 6 dígitos) ou só
   certificado — escolhida sozinha quando o `.ovpn` não tem `auth-user-pass`,
@@ -97,6 +103,14 @@ periódicas e as reconexões após queda funcionam sem intervenção.
   colocaria um segundo ícone de VPN na bandeja
 - Contas (usuário, seed e senha) ficam salvas criptografadas com **DPAPI**
   (amarradas à conta Windows de quem salvou)
+- **Backup das contas**: **Configurações** ⚙ › Backup das contas exporta todas
+  as contas, com os arquivos `.ovpn`, para um arquivo protegido por uma senha
+  escolhida por você (Argon2id + AES-256-GCM), para levar a outro computador
+  ou conta do Windows; ao importar, os `.ovpn` voltam para onde estavam ou, em
+  outro computador, vão para `%APPDATA%\VPN\configs`
+- **Leve na bandeja**: alguns segundos depois de ir para a bandeja, o app
+  devolve ao Windows a memória da janela (de ~110 MB para poucos MB no
+  Gerenciador de Tarefas)
 - Os arquivos `.ovpn` originais são usados sem nenhuma modificação
 - **Atualização discreta**: uma vez por dia o app consulta as
   [Releases](../../releases) deste repositório; havendo versão nova, aparece
@@ -182,7 +196,7 @@ Variáveis úteis para desenvolvimento e testes:
 | `VPN_OPENVPN` | aponta um `openvpn.exe` alternativo (inexistente = força o aviso) |
 | `VPN_INSTANCE` | separa uma instância de teste do app de uso diário |
 | `VPN_SKIP_HINT` | não mostra o aviso da primeira ida à bandeja |
-| `VPN_SCREENSHOT` | capturas de tela da documentação: com `accounts`, `edit`, `new`, `settings` ou `update`, abre direto naquela tela |
+| `VPN_SCREENSHOT` | capturas de tela da documentação: com `accounts`, `edit`, `new`, `settings`, `settings-end`, `update`, `export` ou `import:<arquivo>`, abre direto naquela tela |
 | `VPN_LANGUAGE` | força `pt` ou `en` (capturas de tela) |
 | `VPN_UPDATE_URL` | consulta outro endereço no lugar da API do GitHub (testes da atualização) |
 | `APPDATA` | redirecione para uma pasta de teste para não tocar nas contas reais |
@@ -322,6 +336,15 @@ Get-FileHash .\VPN.exe -Algorithm SHA256
 
 A atualização pelo próprio app faz essa conferência sozinha antes de trocar o
 executável.
+
+A partir da versão 1.2.0, cada `VPN.exe` também tem um
+[atestado de origem](../../attestations): uma prova, assinada pelo GitHub, de
+qual workflow e de qual commit ele saiu. Com o
+[GitHub CLI](https://cli.github.com):
+
+```powershell
+gh attestation verify .\VPN.exe --repo Antxj/vpn
+```
 
 ## Licença
 

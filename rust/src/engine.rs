@@ -171,6 +171,17 @@ impl Motor {
         dpapi::save_settings(&s);
     }
 
+    /// Notify when a connection drops and comes back (default: yes).
+    pub fn avisos_de_queda(&self) -> bool {
+        self.settings.lock().unwrap().avisos_de_queda != Some(false)
+    }
+
+    pub fn salvar_avisos_de_queda(&self, ligado: bool) {
+        let mut s = self.settings.lock().unwrap();
+        s.avisos_de_queda = if ligado { None } else { Some(false) };
+        dpapi::save_settings(&s);
+    }
+
     // ------------------------------------------------------- connections --
 
     /// Connection in progress (connecting, connected or shutting down).

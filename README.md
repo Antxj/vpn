@@ -50,7 +50,14 @@ without user intervention.
   IP and traffic; several can be connected at the same time
 - **Log per account**: with two or more accounts in the log, discreet tabs
   show everything together ("All", each account name in its own color) or one
-  account at a time
+  account at a time. **Copy** puts the open tab on the clipboard, ready to
+  send to whoever gives support — passwords, seeds, usernames and the
+  computer name are hidden; one account's tab also brings the end of
+  OpenVPN's own log
+- **Drop notifications**: when a connection that was up stays down for 15
+  seconds, a Windows notification says so, and another one when it is back
+  (can be turned off under **Settings** ⚙ › Notifications; respects "do not
+  disturb")
 - **Four authentication methods** per account: token (Google
   Authenticator), fixed password, password + token (the password followed by
   the 6-digit code), or certificate only — picked automatically when the
@@ -103,6 +110,14 @@ without user intervention.
   to the tray
 - Accounts (username, seed and password) are stored encrypted with **DPAPI**
   (bound to the Windows account that saved them)
+- **Account backup**: **Settings** ⚙ › Account backup exports every account,
+  with its `.ovpn` files, to one file protected by a password of your choice
+  (Argon2id + AES-256-GCM), to take them to another computer or Windows
+  account; importing it puts the `.ovpn` files back where they were or, on
+  another computer, under `%APPDATA%\VPN\configs`
+- **Light in the tray**: a few seconds after going to the tray, the app gives
+  the window's memory back to Windows (from ~110 MB to a few MB in Task
+  Manager)
 - The original `.ovpn` files are used without any modification
 - **Unobtrusive updates**: once a day the app checks this repository's
   [Releases](../../releases); when there is a new version, a link appears at
@@ -190,7 +205,7 @@ Useful variables for development and testing:
 | `VPN_OPENVPN` | points to an alternative `openvpn.exe` (non-existent = forces the notice) |
 | `VPN_INSTANCE` | separates a test instance from the everyday app |
 | `VPN_SKIP_HINT` | does not show the first-time tray notification |
-| `VPN_SCREENSHOT` | documentation screenshots: with `accounts`, `edit`, `new`, `settings` or `update`, opens directly on that screen |
+| `VPN_SCREENSHOT` | documentation screenshots: with `accounts`, `edit`, `new`, `settings`, `settings-end`, `update`, `export` or `import:<file>`, opens directly on that screen |
 | `VPN_LANGUAGE` | forces `pt` or `en` (screenshots) |
 | `VPN_UPDATE_URL` | queries another address instead of the GitHub API (update tests) |
 | `APPDATA` | redirect to a test folder so the real accounts are not touched |
@@ -331,6 +346,15 @@ Get-FileHash .\VPN.exe -Algorithm SHA256
 
 The built-in updater does this check by itself before replacing the
 executable.
+
+Since version 1.2.0, each `VPN.exe` also carries a
+[build provenance attestation](../../attestations): a proof, signed by
+GitHub, of the workflow and the commit it was built from. With the
+[GitHub CLI](https://cli.github.com):
+
+```powershell
+gh attestation verify .\VPN.exe --repo Antxj/vpn
+```
 
 ## License
 

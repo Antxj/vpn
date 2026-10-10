@@ -21,6 +21,68 @@ use std::time::{Duration, Instant};
 const MAX_AUTH_FAILURES: u32 = 3;
 /// Time without an answer from the server before the "not responding" notice.
 const SEM_RESPOSTA: Duration = Duration::from_secs(30);
+/// How long a connection that was up may stay down before the "dropped"
+/// notification: a quick blip that recovers by itself (renegotiation, waking
+/// from sleep) does not pop anything up.
+const QUEDA_AVISO: Duration = Duration::from_secs(15);
+
+/// Windows notifications about a connection that was up.
+#[derive(Debug, PartialEq)]
+enum AvisoQueda {
+    Caiu,
+    Voltou,
+}
+
+/// Follows a connection to tell the user when it drops and when it comes back.
+#[derive(Default)]
+struct Queda {
+    esteve_conectada: bool,
+    caiu_em: Option<Instant>,
+    avisou: bool,
+}
+
+impl Queda {
+    /// New account status (from the OpenVPN state).
+    fn situacao(&mut self, situacao: Situacao, agora: Instant) -> Option<AvisoQueda> {
+        match situacao {
+            Situacao::Conectado => {
+                self.esteve_conectada = true;
+                self.caiu_em = None;
+                std::mem::take(&mut self.avisou).then_some(AvisoQueda::Voltou)
+            }
+            Situacao::Conectando | Situacao::Reconectando if self.esteve_conectada => {
+                self.caiu_em.get_or_insert(agora);
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// Called regularly: warns once the connection has been down for a while.
+    fn tick(&mut self, agora: Instant) -> Option<AvisoQueda> {
+        match self.caiu_em {
+            Some(desde) if !self.avisou && agora.duration_since(desde) >= QUEDA_AVISO => {
+                self.avisou = true;
+                Some(AvisoQueda::Caiu)
+            }
+            _ => None,
+        }
+    }
+}
+
+fn avisar_queda(aviso: Option<AvisoQueda>, nome: &str) {
+    match aviso {
+        Some(AvisoQueda::Caiu) => crate::notificar(
+            trf!("{nome} caiu. Reconectando...", "{nome} dropped. Reconnecting..."),
+            true,
+        ),
+        Some(AvisoQueda::Voltou) => crate::notificar(
+            trf!("{nome} conectada de novo.", "{nome} is connected again."),
+            false,
+        ),
+        None => {}
+    }
+}
 
 // ---- bookkeeping shared by the connections ---------------------------------
 
@@ -190,7 +252,8 @@ fn erros_do_log(log: &str) -> Vec<String> {
         .collect()
 }
 
-fn log_path(conta_id: &str) -> PathBuf {
+/// OpenVPN's own log for the account (rewritten on every connection).
+pub fn log_path(conta_id: &str) -> PathBuf {
     crate::dpapi::app_dir()
         .join("logs")
         .join(format!("openvpn-{conta_id}.log"))
@@ -449,8 +512,10 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
     let mut respondeu = false;
     let mut avisado = false;
     let mut refazer_sem_dco = false;
+    let mut queda = Queda::default();
 
     loop {
+        avisar_queda(queda.tick(Instant::now()), nome);
         if !respondeu && !avisado && tentativa_desde.elapsed() >= SEM_RESPOSTA {
             avisado = true;
             state::marcar_sem_resposta(&conta.id, true);
@@ -640,6 +705,7 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
                     avisado = false;
                     state::marcar_sem_resposta(&conta.id, false);
                 }
+                avisar_queda(queda.situacao(situacao, Instant::now()), nome);
                 if situacao == Situacao::Conectado {
                     auth_failures = 0;
                     registrar_tipo_de_tunel(conta, nome, ip.as_deref());
@@ -696,12 +762,46 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
     for erro in erros_do_log(&texto_log).into_iter().rev().take(3).collect::<Vec<_>>().into_iter().rev() {
         state::log(nome, erro);
     }
+    if queda.esteve_conectada {
+        crate::notificar(
+            trf!(
+                "{nome} desconectou: o OpenVPN encerrou. Veja o log no app.",
+                "{nome} disconnected: OpenVPN exited. See the log in the app."
+            ),
+            true,
+        );
+    }
     None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aviso_de_queda_so_depois_de_um_tempo() {
+        let t0 = Instant::now();
+        let mut q = Queda::default();
+        // still connecting for the first time: never a "dropped" notice
+        assert_eq!(q.situacao(Situacao::Conectando, t0), None);
+        assert_eq!(q.tick(t0 + QUEDA_AVISO * 2), None);
+
+        assert_eq!(q.situacao(Situacao::Conectado, t0), None);
+        // quick blip: comes back before the delay, nothing is shown
+        assert_eq!(q.situacao(Situacao::Reconectando, t0), None);
+        assert_eq!(q.tick(t0 + QUEDA_AVISO / 2), None);
+        assert_eq!(q.situacao(Situacao::Conectado, t0 + QUEDA_AVISO / 2), None);
+
+        // a real drop: one notice, then "connected again"
+        let t1 = t0 + QUEDA_AVISO;
+        assert_eq!(q.situacao(Situacao::Reconectando, t1), None);
+        // the intermediate states (WAIT, AUTH...) do not restart the clock
+        assert_eq!(q.situacao(Situacao::Conectando, t1 + QUEDA_AVISO / 2), None);
+        assert_eq!(q.tick(t1 + QUEDA_AVISO), Some(AvisoQueda::Caiu));
+        assert_eq!(q.tick(t1 + QUEDA_AVISO * 3), None);
+        assert_eq!(q.situacao(Situacao::Conectado, t1 + QUEDA_AVISO * 4), Some(AvisoQueda::Voltou));
+        assert_eq!(q.situacao(Situacao::Conectado, t1 + QUEDA_AVISO * 4), None);
+    }
 
     #[test]
     fn detecta_adaptador_rapido_ocupado() {

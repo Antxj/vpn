@@ -114,6 +114,9 @@ pub struct Settings {
     /// When started by Windows at logon, stay in the tray (absent = yes).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub iniciar_minimizado: Option<bool>,
+    /// Windows notification when a connection drops (absent = yes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avisos_de_queda: Option<bool>,
 }
 
 fn appdata() -> PathBuf {

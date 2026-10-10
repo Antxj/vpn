@@ -23,6 +23,8 @@ jobs:
     runs-on: windows-2022
     permissions:
       contents: write # create the draft release
+      id-token: write # sign the build provenance attestation (Sigstore)
+      attestations: write # store the attestation in this repository
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -67,6 +69,14 @@ jobs:
           Copy-Item THIRD-PARTY-LICENSES.txt, LICENSE dist/
           $hash = (Get-FileHash -Algorithm SHA256 dist/VPN.exe).Hash
           "VPN.exe SHA-256: ``$hash``" >> $env:GITHUB_STEP_SUMMARY
+
+      # signed proof that VPN.exe was built by this workflow from this commit;
+      # anyone can check it with: gh attestation verify VPN.exe --repo Antxj/vpn
+      - name: Build provenance attestation
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/VPN.exe
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

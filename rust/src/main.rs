@@ -7,6 +7,7 @@
 mod i18n;
 mod update;
 mod accounts;
+mod backup;
 mod dpapi;
 mod elevate;
 mod state;
@@ -17,6 +18,7 @@ mod routes;
 mod service;
 mod single;
 mod startup;
+mod support;
 mod totp;
 mod vpn;
 
@@ -30,7 +32,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -38,7 +40,8 @@ use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, Predefin
 use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use windows_sys::Win32::Foundation::RECT;
 use windows_sys::Win32::UI::Shell::{
-    Shell_NotifyIconGetRect, Shell_NotifyIconW, NIF_INFO, NIIF_INFO, NIM_MODIFY,
+    Shell_NotifyIconGetRect, Shell_NotifyIconW, NIF_INFO, NIIF_INFO, NIIF_RESPECT_QUIET_TIME,
+    NIIF_WARNING, NIM_MODIFY,
     NOTIFYICONDATAW, NOTIFYICONIDENTIFIER,
 };
 
@@ -145,6 +148,8 @@ extern "system" {
 extern "system" {
     fn GetModuleHandleW(name: *const u16) -> *mut c_void;
     fn GetCurrentProcessId() -> u32;
+    fn GetCurrentProcess() -> *mut c_void;
+    fn SetProcessWorkingSetSize(process: *mut c_void, minimum: usize, maximum: usize) -> i32;
 }
 
 #[link(name = "dwmapi")]
@@ -238,7 +243,9 @@ fn copy_notification_text<const N: usize>(target: &mut [u16; N], text: &str) {
     }
 }
 
-unsafe fn show_tray_notification() -> bool {
+/// Windows notification coming from the tray icon. `alerta` = warning icon.
+/// Respects "do not disturb" (quiet time / focus assist).
+unsafe fn show_tray_notification(texto: &str, alerta: bool) -> bool {
     let hwnd = find_own_tray_window();
     if hwnd.is_null() {
         return false;
@@ -260,16 +267,11 @@ unsafe fn show_tray_notification() -> bool {
         notification.hWnd = hwnd;
         notification.uID = icon_id;
         notification.uFlags = NIF_INFO;
-        notification.dwInfoFlags = NIIF_INFO;
+        notification.dwInfoFlags =
+            if alerta { NIIF_WARNING } else { NIIF_INFO } | NIIF_RESPECT_QUIET_TIME;
         notification.Anonymous.uTimeout = 4_000;
         copy_notification_text(&mut notification.szInfoTitle, APP_TITLE);
-        copy_notification_text(
-            &mut notification.szInfo,
-            tr!(
-                "O aplicativo VPN continua ativo na bandeja. Clique no ícone para reabrir.",
-                "VPN is still running in the system tray. Click the icon to reopen it."
-            ),
-        );
+        copy_notification_text(&mut notification.szInfo, texto);
         return Shell_NotifyIconW(NIM_MODIFY, &notification) != 0;
     }
 
@@ -332,6 +334,27 @@ unsafe fn esconder_janela(hwnd: *mut c_void) {
         ShowWindow(hwnd, SW_HIDE);
     }
     MAIN_WINDOW_VISIBLE.store(false, Ordering::SeqCst);
+    devolver_memoria_quando_escondido();
+}
+
+/// Each time the window is hidden (to tell an old request from a new one).
+static VEZES_ESCONDIDA: AtomicU64 = AtomicU64::new(0);
+
+/// A few seconds after going to the tray, gives the memory the window was
+/// using back to Windows (the Task Manager figure drops from ~110 MB to a few
+/// MB). The pages come back by themselves when the window is opened again.
+fn devolver_memoria_quando_escondido() {
+    let vez = VEZES_ESCONDIDA.fetch_add(1, Ordering::SeqCst) + 1;
+    std::thread::spawn(move || {
+        // lets the last frame finish
+        std::thread::sleep(Duration::from_secs(3));
+        if VEZES_ESCONDIDA.load(Ordering::SeqCst) == vez && !MAIN_WINDOW_VISIBLE.load(Ordering::SeqCst) {
+            // (-1, -1): removes as many pages as possible from the working set
+            unsafe {
+                SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
+            }
+        }
+    });
 }
 
 unsafe extern "system" fn main_wnd_proc(
@@ -345,7 +368,13 @@ unsafe extern "system" fn main_wnd_proc(
         if !TRAY_HINT_SHOWN.load(Ordering::SeqCst)
             && std::env::var_os("VPN_SKIP_HINT").is_none()
         {
-            if show_tray_notification() {
+            if show_tray_notification(
+                tr!(
+                    "O aplicativo VPN continua ativo na bandeja. Clique no ícone para reabrir.",
+                    "VPN is still running in the system tray. Click the icon to reopen it."
+                ),
+                false,
+            ) {
                 TRAY_HINT_SHOWN.store(true, Ordering::SeqCst);
             }
         }
@@ -831,6 +860,21 @@ fn install_tray_handlers() {
     }));
 }
 
+/// Windows notification about a connection (drop, back again), when the
+/// user wants them. Callable from any thread.
+pub fn notificar(texto: String, alerta: bool) {
+    if cfg!(test) {
+        state::log("", texto); // no notifications during tests
+        return;
+    }
+    if !engine::get().avisos_de_queda() {
+        return;
+    }
+    unsafe {
+        show_tray_notification(&texto, alerta);
+    }
+}
+
 /// Shows an error without blocking the caller (connection threads).
 pub fn error_box_async(msg: String) {
     if cfg!(test) {
@@ -964,6 +1008,75 @@ fn aba(ui: &mut egui::Ui, texto: &str, ativa: bool, cor: Option<egui::Color32>, 
     r.clicked()
 }
 
+/// "1 conta", "3 contas" (in the current language).
+fn contas_texto(n: usize) -> String {
+    if n == 1 {
+        tr!("1 conta", "1 account").into()
+    } else {
+        trf!("{n} contas", "{n} accounts")
+    }
+}
+
+/// The next step of the backup window (save, open or import).
+fn executar_backup(jb: &mut JanelaBackup, m: &engine::Motor) -> Result<(), String> {
+    if jb.exportar {
+        if jb.senha.chars().count() < backup::SENHA_MINIMA {
+            return Err(trf!(
+                "A senha precisa ter pelo menos {} caracteres.",
+                "The password needs at least {} characters.",
+                backup::SENHA_MINIMA
+            ));
+        }
+        if jb.senha != jb.confirmar {
+            return Err(tr!("As duas senhas não são iguais.", "The two passwords do not match.").into());
+        }
+        let data = state::data_e_hora_local();
+        let Some(destino) = rfd::FileDialog::new()
+            .add_filter(tr!("Backup do VPN", "VPN backup"), &["vpnbackup"])
+            .set_title(tr!("Salvar o backup das contas", "Save the account backup"))
+            .set_file_name(format!("VPN-{}.vpnbackup", &data[..10]))
+            .save_file()
+        else {
+            return Ok(());
+        };
+        let r = backup::exportar(&m.contas(), &jb.senha, &destino)?;
+        jb.senha.clear();
+        jb.confirmar.clear();
+        let mut msg = trf!(
+            "Backup com {} salvo em {}.\n\nGuarde a senha em lugar seguro: sem ela não \
+             dá para abrir o arquivo.",
+            "Backup with {} saved to {}.\n\nKeep the password somewhere safe: the file \
+             cannot be opened without it.",
+            contas_texto(r.contas),
+            destino.display()
+        );
+        if !r.nao_incluidos.is_empty() {
+            msg.push_str(&trf!(
+                "\n\nNão foram incluídos (fora da pasta do .ovpn): {}",
+                "\n\nNot included (outside the .ovpn folder): {}",
+                r.nao_incluidos.join(", ")
+            ));
+        }
+        jb.concluido = Some(msg);
+    } else if let Some(contas) = jb.contas.take() {
+        let prontas = match backup::instalar(&contas, &dpapi::app_dir().join("configs")) {
+            Ok(p) => p,
+            Err(e) => {
+                jb.contas = Some(contas);
+                return Err(e);
+            }
+        };
+        for c in &prontas {
+            m.salvar_conta(c.clone());
+        }
+        jb.concluido = Some(trf!("Importado: {}.", "Imported: {}.", contas_texto(prontas.len())));
+    } else {
+        jb.contas = Some(backup::abrir(&jb.arquivo, &jb.senha)?);
+        jb.senha.clear();
+    }
+    Ok(())
+}
+
 /// Discreet "source code" link beside the settings title: GitHub mark and
 /// small gray text, which light up on hover. Opens the repository.
 fn link_codigo_fonte(ui: &mut egui::Ui, logo: &egui::TextureHandle, dark: bool) {
@@ -1083,6 +1196,36 @@ struct Editor {
     erro: Option<String>,
 }
 
+/// Export or import window of the account backup.
+struct JanelaBackup {
+    exportar: bool,
+    /// Import: the chosen backup file.
+    arquivo: PathBuf,
+    senha: String,
+    confirmar: String,
+    mostrar: bool,
+    erro: Option<String>,
+    /// Import: accounts found after the password was accepted.
+    contas: Option<Vec<backup::ContaExportada>>,
+    /// Final message (the window then only offers "Close").
+    concluido: Option<String>,
+}
+
+impl JanelaBackup {
+    fn nova(exportar: bool, arquivo: PathBuf) -> Self {
+        JanelaBackup {
+            exportar,
+            arquivo,
+            senha: String::new(),
+            confirmar: String::new(),
+            mostrar: false,
+            erro: None,
+            contas: None,
+            concluido: None,
+        }
+    }
+}
+
 struct App {
     dark: bool,
     tela: Tela,
@@ -1090,12 +1233,15 @@ struct App {
     qr_open: bool,
     /// Log tab: None = all accounts, Some(name) = only that account.
     aba_log: Option<String>,
+    /// When "Copy" was clicked (shows "Copied!" for a moment).
+    log_copiado: Option<Instant>,
     janela_atualizacao: bool,
     openvpn_missing: bool,
     last_ovpn_check: Instant,
     installing: bool,
     install_rx: Receiver<installer::Event>,
     install_tx: Sender<installer::Event>,
+    backup: Option<JanelaBackup>,
     /// GitHub mark (white; tinted with the theme's text color).
     logo_github: egui::TextureHandle,
 }
@@ -1212,6 +1358,7 @@ impl App {
             editor: None,
             qr_open: false,
             aba_log: None,
+            log_copiado: None,
             janela_atualizacao: false,
             openvpn_missing: find_openvpn().is_none(),
             last_ovpn_check: Instant::now(),
@@ -1219,6 +1366,7 @@ impl App {
             install_rx,
             install_tx,
             logo_github,
+            backup: None,
         };
         // VPN_SCREENSHOT=accounts|edit|new opens straight on that screen (documentation
         // screenshots and visual check of each screen)
@@ -1231,7 +1379,16 @@ impl App {
             }
             Ok("new") => app.abrir_editor(Conta::nova(), true),
             Ok("update") => app.janela_atualizacao = true,
-            Ok("settings") => app.tela = Tela::Configuracoes,
+            Ok("settings" | "settings-end") => app.tela = Tela::Configuracoes,
+            Ok("export") => {
+                app.tela = Tela::Configuracoes;
+                app.backup = Some(JanelaBackup::nova(true, PathBuf::new()));
+            }
+            // "import:<file>": import window for that backup (screenshots)
+            Ok(v) if v.starts_with("import:") => {
+                app.tela = Tela::Configuracoes;
+                app.backup = Some(JanelaBackup::nova(false, PathBuf::from(&v[7..])));
+            }
             // "log:N": log tab of the N-th account (screenshots)
             Ok(v) if v.starts_with("log:") => {
                 let i: usize = v[4..].parse().unwrap_or(0);
@@ -1694,17 +1851,24 @@ impl App {
             .inner_margin(egui::Margin::same(8.0))
             .show(ui, |ui| {
                 ui.set_min_height(110.0);
-                if abas.len() >= 2 {
+                if abas.len() >= 2 || !entradas.is_empty() {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 12.0;
-                        if aba(ui, tr!("Todas", "All"), self.aba_log.is_none(), None, dark) {
-                            self.aba_log = None;
-                        }
-                        for (i, nome) in abas.iter().enumerate() {
-                            let ativa = self.aba_log.as_deref() == Some(nome.as_str());
-                            if aba(ui, nome, ativa, Some(cor_da_conta(i, dark)), dark) {
-                                self.aba_log = Some(nome.clone());
+                        if abas.len() >= 2 {
+                            if aba(ui, tr!("Todas", "All"), self.aba_log.is_none(), None, dark) {
+                                self.aba_log = None;
                             }
+                            for (i, nome) in abas.iter().enumerate() {
+                                let ativa = self.aba_log.as_deref() == Some(nome.as_str());
+                                if aba(ui, nome, ativa, Some(cor_da_conta(i, dark)), dark) {
+                                    self.aba_log = Some(nome.clone());
+                                }
+                            }
+                        }
+                        if !entradas.is_empty() {
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                self.botao_copiar_log(ui, &entradas, &contas);
+                            });
                         }
                     });
                     ui.add_space(4.0);
@@ -1755,6 +1919,41 @@ impl App {
                         }
                     });
             });
+    }
+
+    /// "Copy" on the log: the lines of the open tab, without secrets or
+    /// usernames, ready to paste in a message to whoever gives support.
+    fn botao_copiar_log(&mut self, ui: &mut egui::Ui, entradas: &[state::Entrada], contas: &[Conta]) {
+        const FEEDBACK: Duration = Duration::from_secs(2);
+        let copiado = self.log_copiado.is_some_and(|t| t.elapsed() < FEEDBACK);
+        let rotulo = if copiado { tr!("Copiado!", "Copied!") } else { tr!("Copiar", "Copy") };
+        let r = ui
+            .add(
+                egui::Label::new(egui::RichText::new(rotulo).small().color(label_color(self.dark)))
+                    .sense(egui::Sense::click()),
+            )
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+            .on_hover_text(tr!(
+                "Copia este log para mandar a quem dá suporte. Senhas, seeds,                  usuários e o nome do computador são escondidos.",
+                "Copies this log to send to whoever gives you support. Passwords,                  seeds, usernames and the computer name are hidden."
+            ));
+        if r.clicked() && !copiado {
+            let conta = self
+                .aba_log
+                .as_ref()
+                .and_then(|nome| contas.iter().find(|c| c.nome_exibicao() == nome.as_str()));
+            let texto = support::texto_do_log(entradas, conta, contas);
+            match arboard::Clipboard::new().and_then(|mut c| c.set_text(texto)) {
+                Ok(()) => {
+                    self.log_copiado = Some(Instant::now());
+                    ui.ctx().request_repaint_after(FEEDBACK);
+                }
+                Err(e) => error_box(&trf!(
+                    "Não foi possível copiar: {e}",
+                    "Could not copy: {e}"
+                )),
+            }
+        }
     }
 
     fn abrir_editor(&mut self, conta: Conta, nova: bool) {
@@ -1984,6 +2183,24 @@ impl App {
                     }
                 });
 
+                // ------------------------------------------------ notifications
+                secao(ui, tr!("AVISOS", "NOTIFICATIONS"), dark, |ui| {
+                    let mut avisos = m.avisos_de_queda();
+                    if linha_toggle(
+                        ui,
+                        dark,
+                        tr!("Avisar quando uma VPN cair", "Notify when a VPN drops"),
+                        tr!(
+                            "Notificação do Windows quando a conexão cai e quando volta.",
+                            "Windows notification when the connection drops and when it is back."
+                        ),
+                        &mut avisos,
+                        true,
+                    ) {
+                        m.salvar_avisos_de_queda(avisos);
+                    }
+                });
+
                 // ------------------------------------------------- appearance
                 secao(ui, tr!("APARÊNCIA", "APPEARANCE"), dark, |ui| {
                     ui.horizontal(|ui| {
@@ -2080,7 +2297,156 @@ impl App {
                         }
                     });
                 });
+
+                // ----------------------------------------------------- backup
+                secao(ui, tr!("BACKUP DAS CONTAS", "ACCOUNT BACKUP"), dark, |ui| {
+                    ui.label(pequeno(tr!(
+                        "Para levar as contas a outro computador ou conta do Windows: um \
+                         arquivo protegido por senha, com usuários, senhas, seeds e os \
+                         arquivos .ovpn.",
+                        "To take the accounts to another computer or Windows account: a \
+                         password-protected file with usernames, passwords, seeds and the \
+                         .ovpn files."
+                    )));
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        let tem_contas = !m.contas().is_empty();
+                        if ui.add_enabled(tem_contas, egui::Button::new(tr!("Exportar...", "Export..."))).clicked() {
+                            self.backup = Some(JanelaBackup::nova(true, PathBuf::new()));
+                        }
+                        if ui.button(tr!("Importar...", "Import...")).clicked() {
+                            if let Some(p) = rfd::FileDialog::new()
+                                .add_filter(tr!("Backup do VPN", "VPN backup"), &["vpnbackup"])
+                                .set_title(tr!("Escolha o backup das contas", "Choose the account backup"))
+                                .pick_file()
+                            {
+                                self.backup = Some(JanelaBackup::nova(false, p));
+                            }
+                        }
+                    });
+                });
+                // VPN_SCREENSHOT=settings-end: the end of the screen (screenshots)
+                if std::env::var("VPN_SCREENSHOT").as_deref() == Ok("settings-end") {
+                    ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
+                }
             });
+    }
+
+    /// Export / import of the account backup (password-protected file).
+    fn janela_backup(&mut self, ctx: &egui::Context) {
+        let dark = self.dark;
+        let Some(jb) = self.backup.as_mut() else {
+            return;
+        };
+        let m = engine::get();
+        let mut aberta = true;
+        let mut fechar = false;
+        let titulo = if jb.exportar {
+            tr!("Exportar contas", "Export accounts")
+        } else {
+            tr!("Importar contas", "Import accounts")
+        };
+        let campo_senha = |ui: &mut egui::Ui, nome: &str, valor: &mut String, mostrar: bool| {
+            rotulo(ui, nome, dark);
+            ui.add(
+                egui::TextEdit::singleline(valor)
+                    .password(!mostrar)
+                    .desired_width(f32::INFINITY),
+            )
+        };
+        egui::Window::new(titulo)
+            .id(egui::Id::new("janela_backup"))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .open(&mut aberta)
+            .show(ctx, |ui| {
+                ui.set_max_width(380.0);
+                if let Some(msg) = &jb.concluido {
+                    ui.label(msg);
+                    ui.add_space(8.0);
+                    if ui.button(tr!("Fechar", "Close")).clicked() {
+                        fechar = true;
+                    }
+                    return;
+                }
+                let mut agir = false;
+                if jb.exportar {
+                    let n = contas_texto(m.contas().len());
+                    ui.label(trf!(
+                        "Cria um arquivo com {n}, protegido pela senha abaixo. Guarde \
+                         essa senha: sem ela o arquivo não abre.",
+                        "Creates a file with {n}, protected by the password below. Keep \
+                         this password: the file does not open without it."
+                    ));
+                    ui.add_space(6.0);
+                    let r = campo_senha(ui, tr!("SENHA DO BACKUP", "BACKUP PASSWORD"), &mut jb.senha, jb.mostrar);
+                    if jb.senha.is_empty() && jb.confirmar.is_empty() && jb.erro.is_none() {
+                        r.request_focus();
+                    }
+                    ui.add_space(4.0);
+                    let r = campo_senha(ui, tr!("REPITA A SENHA", "REPEAT THE PASSWORD"), &mut jb.confirmar, jb.mostrar);
+                    agir |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                } else if let Some(contas) = &jb.contas {
+                    ui.label(trf!(
+                        "Este backup tem {}:",
+                        "This backup has {}:",
+                        contas_texto(contas.len())
+                    ));
+                    ui.add_space(4.0);
+                    let existentes = m.contas();
+                    for c in contas {
+                        let mut linha = format!("•  {}", c.conta.nome_exibicao());
+                        if existentes.iter().any(|e| e.id == c.conta.id) {
+                            linha.push_str(tr!("  (atualiza a que já existe)", "  (updates the existing one)"));
+                        }
+                        ui.label(linha);
+                    }
+                } else {
+                    ui.label(trf!(
+                        "Arquivo: {}",
+                        "File: {}",
+                        jb.arquivo.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()
+                    ));
+                    ui.add_space(6.0);
+                    let r = campo_senha(ui, tr!("SENHA DO BACKUP", "BACKUP PASSWORD"), &mut jb.senha, jb.mostrar);
+                    if jb.senha.is_empty() && jb.erro.is_none() {
+                        r.request_focus();
+                    }
+                    agir |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                }
+                if jb.contas.is_none() {
+                    ui.checkbox(&mut jb.mostrar, tr!("mostrar senha", "show password"));
+                }
+                if let Some(e) = &jb.erro {
+                    ui.add_space(4.0);
+                    ui.colored_label(egui::Color32::from_rgb(0xdc, 0x26, 0x26), e);
+                }
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    let acao = if jb.exportar {
+                        tr!("Salvar backup...", "Save backup...")
+                    } else if jb.contas.is_some() {
+                        tr!("Importar", "Import")
+                    } else {
+                        tr!("Abrir", "Open")
+                    };
+                    let btn = egui::Button::new(egui::RichText::new(acao).color(egui::Color32::WHITE)).fill(ACCENT);
+                    agir |= ui.add(btn).clicked();
+                    if ui.button(tr!("Cancelar", "Cancel")).clicked() {
+                        fechar = true;
+                    }
+                });
+                if agir {
+                    jb.erro = None;
+                    if let Err(e) = executar_backup(jb, m) {
+                        jb.erro = Some(e);
+                    }
+                }
+            });
+        if !aberta || fechar {
+            self.backup = None;
+        }
     }
 
     fn janela_atualizacao(&mut self, ctx: &egui::Context) {
@@ -2570,6 +2936,9 @@ impl eframe::App for App {
         }
         if self.janela_atualizacao {
             self.janela_atualizacao(ctx);
+        }
+        if self.backup.is_some() {
+            self.janela_backup(ctx);
         }
 
         if MAIN_WINDOW_VISIBLE.load(Ordering::SeqCst) {

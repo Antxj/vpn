@@ -1,0 +1,20 @@
+# Opens pull requests when the pinned GitHub Actions or the Rust dependencies
+# have new versions (security fixes included). Nothing is merged by itself.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: cargo
+    directory: /rust
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      # minor and patch updates together in one pull request
+      rust:
+        update-types: [minor, patch]
