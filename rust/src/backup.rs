@@ -270,8 +270,8 @@ fn chave(senha: &str, sal: &[u8], memoria: u32, passadas: u32, faixas: u32) -> R
 fn cifrar(dados: &[u8], senha: &str) -> Result<Vec<u8>, String> {
     let mut sal = [0u8; TAM_SAL];
     let mut nonce = [0u8; TAM_NONCE];
-    getrandom::getrandom(&mut sal)
-        .and_then(|_| getrandom::getrandom(&mut nonce))
+    getrandom::fill(&mut sal)
+        .and_then(|_| getrandom::fill(&mut nonce))
         .map_err(|e| e.to_string())?;
     let mut saida = Vec::with_capacity(TAM_CABECALHO + dados.len() + 16);
     saida.extend_from_slice(MAGICO);
