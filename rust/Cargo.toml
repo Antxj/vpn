@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "vpn"
 version = "1.2.0"
 edition = "2021"
@@ -20,7 +20,7 @@ base32 = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 arboard = "3"
-rfd = "0.15"
+rfd = "0.17"
 url = "2"
 open = "5"
 # account backup: password-derived key (Argon2id) + authenticated encryption (AES-256-GCM)
