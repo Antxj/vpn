@@ -13,7 +13,7 @@ BEGIN
   BEGIN
     BLOCK "041604B0"
     BEGIN
-      VALUE "FileDescription", "VPN - OpenVPN with automatic TOTP token"
+      VALUE "FileDescription", "VPN Client"
       VALUE "FileVersion", "1.2.3"
       VALUE "ProductName", "VPN"
       VALUE "ProductVersion", "1.2.3"
