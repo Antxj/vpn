@@ -264,6 +264,7 @@ Variáveis úteis para desenvolvimento e testes:
 | `VPN_SCREENSHOT` | capturas de tela da documentação: com `accounts`, `edit`, `new`, `settings`, `settings-end`, `update`, `export` ou `import:<arquivo>`, abre direto naquela tela |
 | `VPN_LANGUAGE` | força `pt` ou `en` (capturas de tela) |
 | `VPN_RENDERER` | força `opengl` ou `dx12` para desenhar a janela |
+| `VPN_SEM_CHAVEIRO` | Linux: guarda a chave das contas num arquivo em vez do chaveiro do sistema (testes e CI) |
 | `VPN_UPDATE_URL` | consulta outro endereço no lugar da API do GitHub (testes da atualização) |
 | `APPDATA` | redirecione para uma pasta de teste para não tocar nas contas reais (Linux: `XDG_CONFIG_HOME`) |
 

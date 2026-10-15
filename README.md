@@ -272,6 +272,7 @@ Useful variables for development and testing:
 | `VPN_SCREENSHOT` | documentation screenshots: with `accounts`, `edit`, `new`, `settings`, `settings-end`, `update`, `export` or `import:<file>`, opens directly on that screen |
 | `VPN_LANGUAGE` | forces `pt` or `en` (screenshots) |
 | `VPN_RENDERER` | forces `opengl` or `dx12` to draw the window |
+| `VPN_SEM_CHAVEIRO` | Linux: keeps the accounts key in a file instead of the desktop keyring (tests and CI) |
 | `VPN_UPDATE_URL` | queries another address instead of the GitHub API (update tests) |
 | `APPDATA` | redirect to a test folder so the real accounts are not touched (Linux: `XDG_CONFIG_HOME`) |
 
