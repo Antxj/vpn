@@ -13,7 +13,7 @@ use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 /// The keyring may be locked (or not running yet): the saved accounts are
 /// then kept untouched until it opens (settings.rs).
@@ -32,8 +32,14 @@ static CHAVE: Mutex<Option<(u8, [u8; 32])>> = Mutex::new(None);
 /// kept in memory. The exception is the harness that writes real sample
 /// accounts (settings.rs, VPN_EXEMPLO_JSON).
 fn chave_de_teste() -> Option<(u8, [u8; 32])> {
-    (cfg!(test) && std::env::var_os("VPN_EXEMPLO_JSON").is_none())
-        .then_some((EM_ARQUIVO, [7u8; 32]))
+    if !cfg!(test) || std::env::var_os("VPN_EXEMPLO_JSON").is_some() {
+        return None;
+    }
+    static TESTE: OnceLock<[u8; 32]> = OnceLock::new();
+    Some((
+        EM_ARQUIVO,
+        *TESTE.get_or_init(|| nova_chave().expect("random key")),
+    ))
 }
 
 fn usuario_do_chaveiro() -> String {
@@ -143,25 +149,22 @@ fn chave_de(origem: u8, criar: bool) -> Option<[u8; 32]> {
 }
 
 /// Where the key of a NEW file goes: the keyring when there is one.
-fn origem_para_gravar() -> (u8, [u8; 32]) {
+/// None when there is no keyring and the key file cannot be created either.
+fn origem_para_gravar() -> Option<(u8, [u8; 32])> {
     if let Some(teste) = chave_de_teste() {
-        return teste;
+        return Some(teste);
     }
-    if let Some((o, k)) = *CHAVE.lock().unwrap() {
-        return (o, k);
+    if let Some(ja) = *CHAVE.lock().unwrap() {
+        return Some(ja);
     }
     if let Some(k) = chave_de(NO_CHAVEIRO, true) {
-        return (NO_CHAVEIRO, k);
+        return Some((NO_CHAVEIRO, k));
     }
-    let k = chave_de(EM_ARQUIVO, true).unwrap_or([0u8; 32]);
-    (EM_ARQUIVO, k)
+    Some((EM_ARQUIVO, chave_de(EM_ARQUIVO, true)?))
 }
 
 pub fn protect(dados: &[u8]) -> Option<Vec<u8>> {
-    let (origem, k) = origem_para_gravar();
-    if k == [0u8; 32] {
-        return None;
-    }
+    let (origem, k) = origem_para_gravar()?;
     let mut nonce = [0u8; 12];
     getrandom::fill(&mut nonce).ok()?;
     let cifrado = Aes256Gcm::new_from_slice(&k)
