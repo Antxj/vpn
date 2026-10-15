@@ -1,14 +1,16 @@
 ﻿[package]
 name = "vpn"
-version = "1.2.4"
+version = "1.3.0"
 edition = "2021"
 description = "Connects to one or more OpenVPN VPNs with an automatic Google Authenticator (TOTP) token"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/Antxj/vpn"
 
 [dependencies]
-eframe = { version = "0.29", default-features = false, features = ["wgpu", "default_fonts"] }
-# O eframe 0.29 nao ativa o backend nativo DX12 do wgpu automaticamente.
+# OpenGL (glow) draws the window; WGPU/DirectX 12 only where OpenGL is not
+# available (remote desktop, VMs) - see src/renderer.rs
+eframe = { version = "0.29", default-features = false, features = ["glow", "wgpu", "default_fonts"] }
+# eframe 0.29 does not enable WGPU's native DirectX 12 backend by itself.
 wgpu = { version = "22.1", default-features = false, features = ["dx12"] }
 tray-icon = "0.19"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "webp"] }
@@ -27,7 +29,7 @@ open = "5"
 argon2 = { version = "0.5", default-features = false, features = ["alloc"] }
 aes-gcm = { version = "0.11", default-features = false, features = ["aes", "alloc"] }
 getrandom = "0.4"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry", "Win32_Networking_WinHttp", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Security_WinTrust", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry", "Win32_Networking_WinHttp", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Security_WinTrust", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL"] }
 
 [dev-dependencies]
 qrcode = "0.14"

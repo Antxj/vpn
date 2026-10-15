@@ -115,11 +115,13 @@ without user intervention.
   (Argon2id + AES-256-GCM), to take them to another computer or Windows
   account; importing it puts the `.ovpn` files back where they were or, on
   another computer, under `%APPDATA%\VPN\configs`
-- **Light in the tray**: a few seconds after going to the tray, the app gives
-  the window's memory back to Windows (from ~110 MB to a few MB in Task
-  Manager)
+- **Light**: the window is drawn with OpenGL (about 40 MB in Task Manager
+  with the window open). In remote desktop sessions, virtual machines and PCs
+  without a video driver, where OpenGL cannot open the window, the app uses
+  DirectX 12 by itself. A few seconds after going to the tray, it gives the
+  window's memory back to Windows (a few MB)
 - The original `.ovpn` files are used without any modification
-- **Unobtrusive updates**: once a day the app checks this repository's
+- **Unobtrusive updates**: every 6 hours the app checks this repository's
   [Releases](../../releases); when there is a new version, a link appears at
   the top of the window, an item in the tray menu and a Windows notification
   (clicking it opens the update). "Update now"
@@ -128,7 +130,7 @@ without user intervention.
 
 ## Requirements
 
-- **Windows 10 or 11** with DirectX 12 support
+- **Windows 10 or 11**
 - The `.ovpn` configuration file of each VPN
 - For token accounts: the seed (the base32 key from the Google Authenticator
   enrollment — or the QR code itself)
@@ -175,8 +177,8 @@ installer and with machine paths.
 
 Structure:
 
-- [`main.rs`](rust/src/main.rs) — user interface (egui/WGPU with DirectX 12)
-  and tray
+- [`main.rs`](rust/src/main.rs) — user interface (egui) and tray
+- [`renderer.rs`](rust/src/renderer.rs) — OpenGL or DirectX 12 for the window
 - [`engine.rs`](rust/src/engine.rs) — accounts and active connections (used by
   the interface and by the tray menu)
 - [`vpn.rs`](rust/src/vpn.rs) — one connection: `openvpn.exe` started
@@ -208,6 +210,7 @@ Useful variables for development and testing:
 | `VPN_SKIP_HINT` | does not show the first-time tray notification |
 | `VPN_SCREENSHOT` | documentation screenshots: with `accounts`, `edit`, `new`, `settings`, `settings-end`, `update`, `export` or `import:<file>`, opens directly on that screen |
 | `VPN_LANGUAGE` | forces `pt` or `en` (screenshots) |
+| `VPN_RENDERER` | forces `opengl` or `dx12` to draw the window |
 | `VPN_UPDATE_URL` | queries another address instead of the GitHub API (update tests) |
 | `APPDATA` | redirect to a test folder so the real accounts are not touched |
 
@@ -215,7 +218,7 @@ Useful variables for development and testing:
 
 There is no dedicated server: the app queries
 `api.github.com/repos/Antxj/vpn/releases/latest` 30 seconds after opening and
-then once a day. That endpoint ignores pre-releases, so a version only reaches
+then every 6 hours. That endpoint ignores pre-releases, so a version only reaches
 users when it is published as final. The request sends no user data (GitHub
 only sees the IP address and the app version in the User-Agent) and can be
 turned off under **Settings** ⚙ › "Check for new versions".

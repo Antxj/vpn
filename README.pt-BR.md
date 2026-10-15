@@ -108,11 +108,13 @@ periódicas e as reconexões após queda funcionam sem intervenção.
   escolhida por você (Argon2id + AES-256-GCM), para levar a outro computador
   ou conta do Windows; ao importar, os `.ovpn` voltam para onde estavam ou, em
   outro computador, vão para `%APPDATA%\VPN\configs`
-- **Leve na bandeja**: alguns segundos depois de ir para a bandeja, o app
-  devolve ao Windows a memória da janela (de ~110 MB para poucos MB no
-  Gerenciador de Tarefas)
+- **Leve**: a janela é desenhada com OpenGL (uns 40 MB no Gerenciador de
+  Tarefas com a janela aberta). Em sessões de área de trabalho remota,
+  máquinas virtuais e PCs sem driver de vídeo, onde o OpenGL não abre a
+  janela, o app usa DirectX 12 sozinho. Alguns segundos depois de ir para a
+  bandeja, ele devolve ao Windows a memória da janela (poucos MB)
 - Os arquivos `.ovpn` originais são usados sem nenhuma modificação
-- **Atualização discreta**: uma vez por dia o app consulta as
+- **Atualização discreta**: a cada 6 horas o app consulta as
   [Releases](../../releases) deste repositório; havendo versão nova, aparece
   um link no topo da janela, um item no menu da bandeja e uma notificação do
   Windows (clicar nela abre a atualização). "Atualizar agora"
@@ -121,7 +123,7 @@ periódicas e as reconexões após queda funcionam sem intervenção.
 
 ## Requisitos
 
-- **Windows 10 ou 11** com suporte a DirectX 12
+- **Windows 10 ou 11**
 - O arquivo de configuração `.ovpn` de cada VPN
 - Para contas com token: a seed (a chave base32 do cadastro do Google
   Authenticator — ou o próprio QR Code recebido do suporte)
@@ -168,7 +170,8 @@ máquina.
 
 Estrutura:
 
-- [`main.rs`](rust/src/main.rs) — interface (egui/WGPU com DirectX 12) e bandeja
+- [`main.rs`](rust/src/main.rs) — interface (egui) e bandeja
+- [`renderer.rs`](rust/src/renderer.rs) — OpenGL ou DirectX 12 para a janela
 - [`engine.rs`](rust/src/engine.rs) — contas e conexões ativas (usado pela
   interface e pelo menu da bandeja)
 - [`vpn.rs`](rust/src/vpn.rs) — uma conexão: `openvpn.exe` iniciado pelo
@@ -199,6 +202,7 @@ Variáveis úteis para desenvolvimento e testes:
 | `VPN_SKIP_HINT` | não mostra o aviso da primeira ida à bandeja |
 | `VPN_SCREENSHOT` | capturas de tela da documentação: com `accounts`, `edit`, `new`, `settings`, `settings-end`, `update`, `export` ou `import:<arquivo>`, abre direto naquela tela |
 | `VPN_LANGUAGE` | força `pt` ou `en` (capturas de tela) |
+| `VPN_RENDERER` | força `opengl` ou `dx12` para desenhar a janela |
 | `VPN_UPDATE_URL` | consulta outro endereço no lugar da API do GitHub (testes da atualização) |
 | `APPDATA` | redirecione para uma pasta de teste para não tocar nas contas reais |
 
@@ -206,7 +210,7 @@ Variáveis úteis para desenvolvimento e testes:
 
 Não há servidor próprio: o app consulta
 `api.github.com/repos/Antxj/vpn/releases/latest` 30 segundos depois de abrir e
-depois uma vez por dia. Esse endereço ignora pré-lançamentos, então uma versão
+depois a cada 6 horas. Esse endereço ignora pré-lançamentos, então uma versão
 só chega aos usuários quando é publicada como definitiva. A consulta não envia
 dados do usuário (o GitHub vê apenas o IP e a versão do app no User-Agent) e
 pode ser desligada em **Configurações** ⚙ › "Procurar novas versões".

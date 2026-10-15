@@ -1,6 +1,6 @@
 //! Updates through GitHub Releases, with no server of our own.
 //!
-//! - Unobtrusive check: 30 s after opening and then once a day, the app
+//! - Unobtrusive check: 30 s after opening and then every 6 hours, the app
 //!   queries `releases/latest` on the public GitHub API (which ignores
 //!   pre-releases). Failures are silent. Nothing is sent besides the
 //!   request itself (GitHub sees the IP and the version in the User-Agent).
@@ -28,7 +28,9 @@ pub const VERSAO_ATUAL: &str = env!("CARGO_PKG_VERSION");
 /// Name of the release asset that contains the app.
 const ARQUIVO: &str = "VPN.exe";
 const PRIMEIRA_VERIFICACAO: Duration = Duration::from_secs(30);
-const INTERVALO: Duration = Duration::from_secs(24 * 60 * 60);
+/// Every 6 hours: an app that stays open all the time (started with
+/// Windows) still hears about a new version on the same day.
+const INTERVALO: Duration = Duration::from_secs(6 * 60 * 60);
 const LIMITE_JSON: usize = 2 * 1024 * 1024;
 const LIMITE_EXE: usize = 64 * 1024 * 1024;
 

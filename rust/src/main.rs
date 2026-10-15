@@ -14,6 +14,7 @@ mod state;
 mod installer;
 mod engine;
 mod qr;
+mod renderer;
 mod routes;
 mod service;
 mod single;
@@ -569,6 +570,15 @@ fn error_box(msg: &str) {
 }
 
 fn report_startup_error(error: &eframe::Error) {
+    let log_info = registrar_erro_de_inicio(error);
+    error_box(&trf!(
+        "Não foi possível iniciar a interface gráfica.\n\nErro: {error}\n\n{log_info}",
+        "Could not start the user interface.\n\nError: {error}\n\n{log_info}"
+    ));
+}
+
+/// Appends the error to startup-error.log; returns where (or why not), for the user.
+fn registrar_erro_de_inicio(error: &eframe::Error) -> String {
     let app_dir = dpapi::app_dir();
     let log_path = app_dir.join("startup-error.log");
     let timestamp = SystemTime::now()
@@ -587,17 +597,13 @@ fn report_startup_error(error: &eframe::Error) {
             .write_all(entry.as_bytes())
     });
 
-    let log_info = match log_result {
+    match log_result {
         Ok(()) => trf!("Detalhes registrados em:\n{}", "Details logged in:\n{}", log_path.display()),
         Err(log_error) => trf!(
             "Não foi possível gravar o log: {log_error}",
             "Could not write the log: {log_error}"
         ),
-    };
-    error_box(&trf!(
-        "Não foi possível iniciar a interface gráfica.\n\nErro: {error}\n\n{log_info}",
-        "Could not start the user interface.\n\nError: {error}\n\n{log_info}"
-    ));
+    }
 }
 
 /// "1234567" bytes -> "1,2 MB" (pt-BR decimal comma).
@@ -2309,8 +2315,8 @@ impl App {
                         dark,
                         tr!("Procurar novas versões", "Check for new versions"),
                         tr!(
-                            "Uma vez por dia, no GitHub, sem enviar dados seus.",
-                            "Once a day, on GitHub, without sending any of your data."
+                            "A cada 6 horas, no GitHub, sem enviar dados seus.",
+                            "Every 6 hours, on GitHub, without sending any of your data."
                         ),
                         &mut auto,
                         true,
@@ -2894,6 +2900,10 @@ fn eframe_ctx() -> egui::Context {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if ctx.cumulative_pass_nr() == 2 {
+            // the first frames were drawn
+            renderer::opengl_funcionou();
+        }
         install_main_window_hook();
         install_tray_click_hook();
         if MAIN_WNDPROC_INSTALLED.load(Ordering::SeqCst) && INICIAR_OCULTO.swap(false, Ordering::SeqCst) {
@@ -3041,6 +3051,17 @@ fn main() -> eframe::Result<()> {
         update::aguardar_processo(pid, Duration::from_secs(30));
         APOS_ATUALIZAR.store(true, Ordering::SeqCst);
     }
+    // OpenGL could not open the window: the previous process opened this one
+    // with DirectX 12 and is exiting (it holds the single instance until then)
+    let forcar_dx12 = match valor(renderer::ARG_DX12) {
+        Some(pid) => {
+            if let Ok(pid) = pid.parse() {
+                update::aguardar_processo(pid, Duration::from_secs(15));
+            }
+            true
+        }
+        None => false,
+    };
     if let Some(ids) = valor(update::ARG_RECONECTAR) {
         let _ = RECONECTAR.set(
             ids.split(',')
@@ -3080,18 +3101,25 @@ fn main() -> eframe::Result<()> {
         height: h,
     };
 
+    let (desenho, motivo) = renderer::escolher(forcar_dx12);
+    // only the exception goes to the log (useful when the log is sent to support)
+    if desenho == renderer::Desenho::DirectX12 {
+        state::log("", trf!("Interface: {} ({motivo})", "Interface: {} ({motivo})", desenho.nome()));
+    }
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size(WINDOW_SIZE)
             .with_resizable(false)
             .with_icon(std::sync::Arc::new(icon))
             .with_title(WINDOW_TITLE),
-        // DO NOT switch to OpenGL/glow: in virtual machines and remote desktop
-        // sessions Windows only offers software OpenGL 1.1 and the app does not
-        // even open. DX12 always finds an adapter - when there is no real GPU it
-        // falls back to WARP (Microsoft Basic Render Driver), which supports
-        // DirectX 12. That switch is what made the app open in VMs.
-        renderer: eframe::Renderer::Wgpu,
+        // OpenGL where the video driver offers it; DirectX 12 in remote desktop
+        // sessions, VMs and PCs with only Windows' software OpenGL 1.1, where
+        // OpenGL cannot open the window (see renderer.rs)
+        renderer: match desenho {
+            renderer::Desenho::OpenGl => eframe::Renderer::Glow,
+            renderer::Desenho::DirectX12 => eframe::Renderer::Wgpu,
+        },
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
             supported_backends: eframe::wgpu::Backends::DX12,
             // static interface: no reason to wake up the dedicated GPU
@@ -3102,6 +3130,9 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
+    if desenho == renderer::Desenho::OpenGl {
+        renderer::vigiar_inicio_opengl();
+    }
     let result = eframe::run_native(
         WINDOW_TITLE,
         options,
@@ -3109,6 +3140,11 @@ fn main() -> eframe::Result<()> {
     );
 
     if let Err(error) = &result {
+        // OpenGL could not open the window: the app opens again with DirectX 12
+        if renderer::falhou_ao_abrir() {
+            registrar_erro_de_inicio(error);
+            return Ok(());
+        }
         report_startup_error(error);
     }
 
