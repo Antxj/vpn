@@ -16,6 +16,9 @@ exactly as published by OpenVPN Inc. at:
 The package is digitally signed by "OpenVPN Inc." and its integrity
 (SHA-256) is verified on every release build.
 
+The Linux file (VPN-linux-x86_64) does not include OpenVPN: it uses the
+openvpn package installed from the user's distribution.
+
 OpenVPN is free software, licensed under the GNU General Public License
 version 2 (GPLv2). Full license text:
 
@@ -33,20 +36,34 @@ redistributes the official installer.
 Relationship between the programs
 ---------------------------------
 VPN is an independent program. It does not modify, link to or
-incorporate OpenVPN code: it only runs openvpn.exe as a separate process
-and talks to it through the management interface (a local socket), the
-same way any user could from the command line.
+incorporate OpenVPN code: it only runs openvpn (openvpn.exe on Windows)
+as a separate process and talks to it through the management interface (a
+local socket), the same way any user could from the command line.
 
 Rust libraries
 --------------
 The Rust dependencies used in the build (eframe/egui, tray-icon, image,
-rqrr, hmac, sha1, base32, argon2, aes-gcm, getrandom, serde, arboard, rfd,
-url, open, windows-sys and their transitive dependencies) are distributed
-under permissive licenses compatible with GPL-3.0: mostly MIT and/or Apache-2.0, and a few under
-Unicode-3.0, Zlib, BSL-1.0, ISC, BSD-2-Clause, BSD-3-Clause, CC0-1.0 or
-Unlicense. The full list can be generated with:
+rqrr, hmac, sha1, base32, argon2, aes-gcm, getrandom, serde, arboard, url,
+open; on Windows also rfd, wgpu and windows-sys; on Linux also gtk,
+notify-rust, keyring, ureq/rustls, sha2 and libc; and their transitive
+dependencies) are distributed under licenses compatible with GPL-3.0:
+mostly MIT and/or Apache-2.0, and a few under Unicode-3.0, Zlib, BSL-1.0,
+ISC, BSD-2-Clause, BSD-3-Clause, CC0-1.0, Unlicense or MPL-2.0. The full
+list can be generated with:
 
-    cargo tree --format "{p} {l}"
+    cargo tree -e normal --target x86_64-unknown-linux-gnu --format "{p} {l}"
+
+(or --target x86_64-pc-windows-gnu for the Windows file).
+
+The Linux file includes Mozilla's list of trusted root certificates (via
+the webpki-roots package), used to check the HTTPS connection to GitHub
+when looking for updates. It is distributed under the Community Data
+License Agreement - Permissive, Version 2.0:
+
+    https://cdla.dev/permissive-2-0/
+
+On Linux, GTK 3 and the other desktop libraries (LGPL-2.1-or-later) are
+not included in the file: they are loaded from the user's distribution.
 
 Embedded fonts (via egui)
 -------------------------

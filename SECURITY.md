@@ -22,7 +22,9 @@ if you wish.
 Of particular interest:
 
 - exposure of saved accounts, passwords or TOTP seeds (stored with Windows
-  DPAPI in `%APPDATA%\VPN\contas.dat`);
+  DPAPI in `%APPDATA%\VPN\contas.dat`; on Linux in
+  `~/.config/vpn/contas.dat`, encrypted with a key kept in the desktop
+  keyring);
 - the account backup file (`.vpnbackup`: Argon2id + AES-256-GCM) and the
   import of its `.ovpn` files;
 - the update mechanism (download, SHA-256 and signature checks, executable
