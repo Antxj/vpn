@@ -10,8 +10,8 @@
   <a href="https://github.com/Antxj/vpn/releases/latest"><img src="https://img.shields.io/github/v/release/Antxj/vpn?label=Download&style=for-the-badge&color=2563eb" alt="Download the latest version"></a>
 </p>
 
-Windows app that connects to one or **several OpenVPN VPNs at the same
-time**, generating the Google Authenticator token automatically — no need to
+Windows app (and, experimentally, [Linux](#linux)) that connects to one or
+**several OpenVPN VPNs at the same time**, generating the Google Authenticator token automatically — no need to
 open the phone app for every connection. If a connection drops, it
 reconnects by itself with a fresh token.
 
@@ -155,6 +155,56 @@ cases described in [Administrator rights](#administrator-rights).
 On the first run, Windows SmartScreen may warn about an "unrecognized app":
 click **More info** › **Run anyway**.
 
+## Linux
+
+> **Experimental.** The Linux version is new: it was tested on Ubuntu 24.04
+> (including a real connection through a test OpenVPN server), but not yet in
+> everyday use. Feedback is welcome in the [Issues](../../issues).
+
+![VPN on Linux](docs/en/linux.png)
+
+**Requirements**
+
+- A desktop with GTK 3 — Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint,
+  Pop!_OS and others (x86_64)
+- OpenVPN 2.6+ and polkit, from the distribution:
+  `sudo apt install openvpn` (Fedora: `sudo dnf install openvpn`)
+- A tray area: Ubuntu, KDE, Xfce, Cinnamon and MATE have one; on plain GNOME
+  install the *AppIndicator* extension
+- Optional, for the VPN's DNS servers: `sudo apt install openvpn-systemd-resolved`
+
+**Install**
+
+1. Download `VPN-linux-x86_64` from the [Releases](../../releases) page
+2. Make it executable and open it: `chmod +x VPN-linux-x86_64 && ./VPN-linux-x86_64`
+3. Add the accounts as on Windows
+
+On the **first connection**, the app asks for an administrator's password
+**once** (polkit). That authorization installs a small helper
+(`/usr/local/libexec/vpn-openvpn-helper`, a root-owned copy of the app) and
+adds your account to the `vpn-openvpn` group; from then on connections need
+no password — the same idea as the OpenVPN service on Windows. The helper
+only accepts the options the app itself uses and refuses `.ovpn` files that
+would run programs as root (`up`/`down` scripts, `plugin`, `iproute`…),
+read the password from a file, or read files outside the `.ovpn` folder.
+When the app ends (even if it crashes), the helper stops OpenVPN.
+
+The accounts are saved in `~/.config/vpn/contas.dat`, encrypted with a key
+kept in the desktop keyring (GNOME Keyring, KWallet). Everything else works
+as on Windows: several connections at once, automatic token, tray icon,
+notifications, start with the system, backup and updates.
+
+**Uninstall**: exit the app from the tray, delete the downloaded file and
+`~/.config/vpn`, then remove the authorization:
+
+```bash
+sudo rm -f /usr/local/libexec/vpn-openvpn-helper /usr/share/polkit-1/actions/io.github.antxj.vpn.policy /etc/polkit-1/rules.d/49-vpn-openvpn.rules /etc/polkit-1/localauthority/50-local.d/49-vpn-openvpn.pkla
+```
+
+```bash
+sudo gpasswd -d "$USER" vpn-openvpn
+```
+
 ## For developers
 
 Requirements: [Rust](https://rustup.rs) (toolchain
@@ -175,16 +225,26 @@ local paths from the binary and validates the result. A plain
 `cargo build --release` produces an executable **without** the embedded
 installer and with machine paths.
 
-Structure:
+Linux: Rust, `pkg-config` and the GTK 3 development files
+(`sudo apt install build-essential pkg-config libgtk-3-dev`), then
+`bash rust/build-release-linux.sh` (tests, build without machine paths, checks).
+
+Structure (what talks to the operating system has one module per system,
+with the same interface: `src/<module>.rs` for Windows, `src/linux/` for Linux):
 
 - [`main.rs`](rust/src/main.rs) — user interface (egui) and tray
+- [`windows/desktop.rs`](rust/src/windows/desktop.rs),
+  [`linux/desktop.rs`](rust/src/linux/desktop.rs) — window, tray icon and
+  notifications of each system; [`dialogo.rs`](rust/src/dialogo.rs) — native dialogs
 - [`renderer.rs`](rust/src/renderer.rs) — OpenGL or DirectX 12 for the window
 - [`engine.rs`](rust/src/engine.rs) — accounts and active connections (used by
   the interface and by the tray menu)
 - [`vpn.rs`](rust/src/vpn.rs) — one connection: `openvpn.exe` started
   through the service, management interface and on-demand adapter creation
 - [`service.rs`](rust/src/service.rs) — client of the OpenVPN interactive
-  service (named pipe protocol) and user authorization
+  service (named pipe protocol) and user authorization;
+  [`linux/service.rs`](rust/src/linux/service.rs) — the pkexec/polkit helper
+  that starts OpenVPN as root on Linux
 - [`elevate.rs`](rust/src/elevate.rs) — administrator rights on demand (UAC)
 - [`startup.rs`](rust/src/startup.rs) — "Start with Windows" (user Run key)
 - [`state.rs`](rust/src/state.rs) — shared per-account state and log;
@@ -192,6 +252,7 @@ Structure:
 - [`accounts.rs`](rust/src/accounts.rs) — account model, authentication and
   validation
 - [`dpapi.rs`](rust/src/dpapi.rs) — encryption and persistence
+  ([`linux/segredo.rs`](rust/src/linux/segredo.rs): key in the desktop keyring)
 - [`routes.rs`](rust/src/routes.rs) — routes that keep other VPNs outside a
   full tunnel, and tunnel type detection (Windows IP Helper)
 - [`i18n.rs`](rust/src/i18n.rs) — language (Portuguese/English) and the
@@ -212,7 +273,7 @@ Useful variables for development and testing:
 | `VPN_LANGUAGE` | forces `pt` or `en` (screenshots) |
 | `VPN_RENDERER` | forces `opengl` or `dx12` to draw the window |
 | `VPN_UPDATE_URL` | queries another address instead of the GitHub API (update tests) |
-| `APPDATA` | redirect to a test folder so the real accounts are not touched |
+| `APPDATA` | redirect to a test folder so the real accounts are not touched (Linux: `XDG_CONFIG_HOME`) |
 
 ## Updates
 
@@ -358,6 +419,16 @@ GitHub, of the workflow and the commit it was built from. With the
 
 ```powershell
 gh attestation verify .\VPN.exe --repo Antxj/vpn
+```
+
+On Linux, the same with the Linux file:
+
+```bash
+sha256sum VPN-linux-x86_64
+```
+
+```bash
+gh attestation verify VPN-linux-x86_64 --repo Antxj/vpn
 ```
 
 ## License

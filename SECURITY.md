@@ -29,7 +29,11 @@ Of particular interest:
   replacement);
 - the OpenVPN management interface, which listens only on `127.0.0.1`;
 - the use of the OpenVPN interactive service (options passed to it) and the
-  elevated helper that authorizes a Windows account (`--authorize-openvpn-user`).
+  elevated helper that authorizes a Windows account (`--authorize-openvpn-user`);
+- on Linux, the root helper run through pkexec
+  (`/usr/local/libexec/vpn-openvpn-helper --openvpn-helper`): the options and
+  `.ovpn` directives it accepts, and the polkit rule installed by the one-time
+  authorization.
 
 Vulnerabilities in OpenVPN itself should be reported to the
 [OpenVPN project](https://community.openvpn.net/openvpn/wiki/SecurityAnnouncements).

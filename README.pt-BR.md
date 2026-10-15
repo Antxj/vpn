@@ -148,6 +148,56 @@ quando é preciso instalar o OpenVPN e nos outros casos ocasionais descritos em
 Na primeira execução o Windows SmartScreen pode avisar sobre "aplicativo não
 reconhecido": clique em **Mais informações** › **Executar assim mesmo**.
 
+## Linux
+
+> **Experimental.** A versão Linux é nova: foi testada no Ubuntu 24.04
+> (inclusive com uma conexão real a um servidor OpenVPN de teste), mas ainda
+> não no uso do dia a dia. Comentários são bem-vindos nas [Issues](../../issues).
+
+![VPN no Linux](docs/pt-BR/linux.png)
+
+**Requisitos**
+
+- Um desktop com GTK 3 — Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint,
+  Pop!_OS e outros (x86_64)
+- OpenVPN 2.6+ e polkit, da própria distribuição:
+  `sudo apt install openvpn` (Fedora: `sudo dnf install openvpn`)
+- Uma área de bandeja: Ubuntu, KDE, Xfce, Cinnamon e MATE têm; no GNOME puro,
+  instale a extensão *AppIndicator*
+- Opcional, para os servidores de DNS da VPN: `sudo apt install openvpn-systemd-resolved`
+
+**Instalação**
+
+1. Baixe o `VPN-linux-x86_64` na página de [Releases](../../releases)
+2. Torne executável e abra: `chmod +x VPN-linux-x86_64 && ./VPN-linux-x86_64`
+3. Cadastre as contas como no Windows
+
+Na **primeira conexão**, o app pede a senha de um administrador **uma única
+vez** (polkit). Essa autorização instala um pequeno ajudante
+(`/usr/local/libexec/vpn-openvpn-helper`, uma cópia do app que pertence ao
+root) e inclui a sua conta no grupo `vpn-openvpn`; depois disso as conexões
+não pedem senha — a mesma ideia do serviço do OpenVPN no Windows. O ajudante
+só aceita as opções que o próprio app usa e recusa arquivos `.ovpn` que
+rodariam programas como root (scripts `up`/`down`, `plugin`, `iproute`…),
+leriam a senha de um arquivo ou leriam arquivos fora da pasta do `.ovpn`.
+Quando o app termina (mesmo se travar), o ajudante desliga o OpenVPN.
+
+As contas ficam em `~/.config/vpn/contas.dat`, criptografadas com uma chave
+guardada no chaveiro do sistema (GNOME Keyring, KWallet). O resto funciona
+como no Windows: várias conexões ao mesmo tempo, token automático, ícone na
+bandeja, notificações, iniciar com o sistema, backup e atualizações.
+
+**Desinstalação**: saia do app pela bandeja, apague o arquivo baixado e a
+pasta `~/.config/vpn`, e remova a autorização:
+
+```bash
+sudo rm -f /usr/local/libexec/vpn-openvpn-helper /usr/share/polkit-1/actions/io.github.antxj.vpn.policy /etc/polkit-1/rules.d/49-vpn-openvpn.rules /etc/polkit-1/localauthority/50-local.d/49-vpn-openvpn.pkla
+```
+
+```bash
+sudo gpasswd -d "$USER" vpn-openvpn
+```
+
 ## Para desenvolvedores
 
 Requisitos: [Rust](https://rustup.rs) (toolchain `stable-x86_64-pc-windows-gnu`)
@@ -168,22 +218,33 @@ caminhos locais do binário e valida o resultado. Um `cargo build --release`
 avulso gera um executável **sem** o instalador embutido e com caminhos da
 máquina.
 
-Estrutura:
+Linux: Rust, `pkg-config` e os arquivos de desenvolvimento do GTK 3
+(`sudo apt install build-essential pkg-config libgtk-3-dev`), e depois
+`bash rust/build-release-linux.sh` (testes, build sem caminhos da máquina e conferências).
+
+Estrutura (o que fala com o sistema operacional tem um módulo por sistema,
+com a mesma interface: `src/<módulo>.rs` no Windows, `src/linux/` no Linux):
 
 - [`main.rs`](rust/src/main.rs) — interface (egui) e bandeja
+- [`windows/desktop.rs`](rust/src/windows/desktop.rs),
+  [`linux/desktop.rs`](rust/src/linux/desktop.rs) — janela, ícone da bandeja e
+  notificações de cada sistema; [`dialogo.rs`](rust/src/dialogo.rs) — diálogos nativos
 - [`renderer.rs`](rust/src/renderer.rs) — OpenGL ou DirectX 12 para a janela
 - [`engine.rs`](rust/src/engine.rs) — contas e conexões ativas (usado pela
   interface e pelo menu da bandeja)
 - [`vpn.rs`](rust/src/vpn.rs) — uma conexão: `openvpn.exe` iniciado pelo
   serviço, interface de gerenciamento e criação de adaptador sob demanda
 - [`service.rs`](rust/src/service.rs) — cliente do serviço interativo do
-  OpenVPN (protocolo por named pipe) e autorização do usuário
+  OpenVPN (protocolo por named pipe) e autorização do usuário;
+  [`linux/service.rs`](rust/src/linux/service.rs) — o ajudante pkexec/polkit
+  que inicia o OpenVPN como root no Linux
 - [`elevate.rs`](rust/src/elevate.rs) — permissão de administrador sob demanda (UAC)
 - [`startup.rs`](rust/src/startup.rs) — "Iniciar com o Windows" (chave Run do usuário)
 - [`state.rs`](rust/src/state.rs) — estado compartilhado por conta e log;
   escrito pelas conexões, lido pela interface e pela bandeja
 - [`accounts.rs`](rust/src/accounts.rs) — modelo de conta, autenticação e validação
 - [`dpapi.rs`](rust/src/dpapi.rs) — criptografia e persistência
+  ([`linux/segredo.rs`](rust/src/linux/segredo.rs): chave no chaveiro do sistema)
 - [`routes.rs`](rust/src/routes.rs) — rotas que mantêm outras VPNs fora de um
   túnel completo e detecção do tipo de túnel (IP Helper do Windows)
 - [`i18n.rs`](rust/src/i18n.rs) — idioma (português/inglês) e as macros
@@ -204,7 +265,7 @@ Variáveis úteis para desenvolvimento e testes:
 | `VPN_LANGUAGE` | força `pt` ou `en` (capturas de tela) |
 | `VPN_RENDERER` | força `opengl` ou `dx12` para desenhar a janela |
 | `VPN_UPDATE_URL` | consulta outro endereço no lugar da API do GitHub (testes da atualização) |
-| `APPDATA` | redirecione para uma pasta de teste para não tocar nas contas reais |
+| `APPDATA` | redirecione para uma pasta de teste para não tocar nas contas reais (Linux: `XDG_CONFIG_HOME`) |
 
 ## Atualizações
 
@@ -349,6 +410,16 @@ qual workflow e de qual commit ele saiu. Com o
 
 ```powershell
 gh attestation verify .\VPN.exe --repo Antxj/vpn
+```
+
+No Linux, o mesmo com o arquivo do Linux:
+
+```bash
+sha256sum VPN-linux-x86_64
+```
+
+```bash
+gh attestation verify VPN-linux-x86_64 --repo Antxj/vpn
 ```
 
 ## Licença
