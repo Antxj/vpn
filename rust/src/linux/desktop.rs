@@ -71,9 +71,6 @@ pub fn ocultar_antes_do_primeiro_quadro() {}
 /// Every frame: closing the window hides it to the tray (the connections
 /// stay on), like on Windows.
 pub fn por_quadro(ctx: &egui::Context) {
-    if std::env::var_os("VPN_DEBUG_QUADROS").is_some() {
-        eprintln!("QUADRO {} visivel={}", ctx.cumulative_pass_nr(), MAIN_WINDOW_VISIBLE.load(Ordering::SeqCst));
-    }
     if INICIAR_OCULTO.swap(false, Ordering::SeqCst) {
         esconder(ctx);
     }

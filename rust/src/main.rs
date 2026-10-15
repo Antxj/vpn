@@ -1805,11 +1805,19 @@ impl App {
                     if linha_toggle(
                         ui,
                         dark,
-                        tr!("Iniciar com o Windows", "Start with Windows"),
-                        tr!(
-                            "Abre o app quando você entra no Windows.",
-                            "Opens the app when you sign in to Windows."
-                        ),
+                        if cfg!(windows) {
+                            tr!("Iniciar com o Windows", "Start with Windows")
+                        } else {
+                            tr!("Iniciar com o sistema", "Start with the system")
+                        },
+                        if cfg!(windows) {
+                            tr!(
+                                "Abre o app quando você entra no Windows.",
+                                "Opens the app when you sign in to Windows."
+                            )
+                        } else {
+                            tr!("Abre o app quando você entra na sessão.", "Opens the app when you sign in.")
+                        },
                         &mut com_windows,
                         true,
                     ) {
@@ -1823,10 +1831,17 @@ impl App {
                         ui,
                         dark,
                         tr!("Iniciar minimizado", "Start minimized"),
-                        tr!(
-                            "Ao abrir com o Windows, fica só no ícone da bandeja.",
-                            "When opened by Windows, stays in the tray icon only."
-                        ),
+                        if cfg!(windows) {
+                            tr!(
+                                "Ao abrir com o Windows, fica só no ícone da bandeja.",
+                                "When opened by Windows, stays in the tray icon only."
+                            )
+                        } else {
+                            tr!(
+                                "Ao abrir com o sistema, fica só no ícone da bandeja.",
+                                "When opened by the system, stays in the tray icon only."
+                            )
+                        },
                         &mut minimizado,
                         com_windows,
                     ) {
@@ -1863,10 +1878,17 @@ impl App {
                         ui,
                         dark,
                         tr!("Avisar quando uma VPN cair", "Notify when a VPN drops"),
-                        tr!(
-                            "Notificação do Windows quando a conexão cai e quando volta.",
-                            "Windows notification when the connection drops and when it is back."
-                        ),
+                        if cfg!(windows) {
+                            tr!(
+                                "Notificação do Windows quando a conexão cai e quando volta.",
+                                "Windows notification when the connection drops and when it is back."
+                            )
+                        } else {
+                            tr!(
+                                "Notificação na área de trabalho quando a conexão cai e quando volta.",
+                                "Desktop notification when the connection drops and when it is back."
+                            )
+                        },
                         &mut avisos,
                         true,
                     ) {
@@ -1973,14 +1995,24 @@ impl App {
 
                 // ----------------------------------------------------- backup
                 secao(ui, tr!("BACKUP DAS CONTAS", "ACCOUNT BACKUP"), dark, |ui| {
-                    ui.label(pequeno(tr!(
-                        "Para levar as contas a outro computador ou conta do Windows: um \
-                         arquivo protegido por senha, com usuários, senhas, seeds e os \
-                         arquivos .ovpn.",
-                        "To take the accounts to another computer or Windows account: a \
-                         password-protected file with usernames, passwords, seeds and the \
-                         .ovpn files."
-                    )));
+                    ui.label(pequeno(if cfg!(windows) {
+                        tr!(
+                            "Para levar as contas a outro computador ou conta do Windows: um \
+                             arquivo protegido por senha, com usuários, senhas, seeds e os \
+                             arquivos .ovpn.",
+                            "To take the accounts to another computer or Windows account: a \
+                             password-protected file with usernames, passwords, seeds and the \
+                             .ovpn files."
+                        )
+                    } else {
+                        tr!(
+                            "Para levar as contas a outro computador ou usuário: um arquivo \
+                             protegido por senha, com usuários, senhas, seeds e os arquivos .ovpn.",
+                            "To take the accounts to another computer or user: a \
+                             password-protected file with usernames, passwords, seeds and the \
+                             .ovpn files."
+                        )
+                    }));
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
                         let tem_contas = !m.contas().is_empty();
