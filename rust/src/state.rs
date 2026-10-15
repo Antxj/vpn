@@ -303,6 +303,26 @@ struct SystemTimeW {
     ms: u16,
 }
 
+#[cfg(target_os = "linux")]
+fn agora_local() -> SystemTimeW {
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    unsafe {
+        let agora = libc::time(std::ptr::null_mut());
+        libc::localtime_r(&agora, &mut tm);
+    }
+    SystemTimeW {
+        year: (tm.tm_year + 1900) as u16,
+        month: (tm.tm_mon + 1) as u16,
+        dow: tm.tm_wday as u16,
+        day: tm.tm_mday as u16,
+        hour: tm.tm_hour as u16,
+        minute: tm.tm_min as u16,
+        second: tm.tm_sec as u16,
+        ms: 0,
+    }
+}
+
+#[cfg(windows)]
 fn agora_local() -> SystemTimeW {
     #[link(name = "kernel32")]
     extern "system" {

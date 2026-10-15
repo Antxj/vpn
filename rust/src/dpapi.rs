@@ -1,20 +1,26 @@
 //! DPAPI (CryptProtectData) + persisted settings.
 //!
 //! %APPDATA%/VPN/contas.dat: a JSON encrypted with DPAPI in the user scope,
-//! with the preferences and the list of accounts.
+//! with the preferences and the list of accounts. On Linux the file lives in
+//! ~/.config/vpn and is encrypted with a key from the desktop keyring
+//! (see linux/segredo.rs).
 
 use crate::accounts::Conta;
 use serde::{Deserialize, Serialize};
+#[cfg(windows)]
 use std::ffi::c_void;
 use std::path::PathBuf;
+#[cfg(windows)]
 use std::ptr;
 
+#[cfg(windows)]
 #[repr(C)]
 struct DataBlob {
     cb_data: u32,
     pb_data: *mut u8,
 }
 
+#[cfg(windows)]
 #[link(name = "crypt32")]
 extern "system" {
     fn CryptProtectData(
@@ -37,11 +43,13 @@ extern "system" {
     ) -> i32;
 }
 
+#[cfg(windows)]
 #[link(name = "kernel32")]
 extern "system" {
     fn LocalFree(mem: *mut c_void) -> *mut c_void;
 }
 
+#[cfg(windows)]
 fn dpapi(data: &[u8], protect: bool) -> Option<Vec<u8>> {
     let blob_in = DataBlob {
         cb_data: data.len() as u32,
@@ -84,13 +92,18 @@ fn dpapi(data: &[u8], protect: bool) -> Option<Vec<u8>> {
     Some(out)
 }
 
+#[cfg(windows)]
 pub fn protect(data: &[u8]) -> Option<Vec<u8>> {
     dpapi(data, true)
 }
 
+#[cfg(windows)]
 pub fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
     dpapi(data, false)
 }
+
+#[cfg(target_os = "linux")]
+pub use crate::segredo::{protect, unprotect};
 
 // ------------------------------------------------------------ settings ---
 
@@ -119,13 +132,49 @@ pub struct Settings {
     pub avisos_de_queda: Option<bool>,
 }
 
+#[cfg(windows)]
 fn appdata() -> PathBuf {
     PathBuf::from(std::env::var("APPDATA").unwrap_or_else(|_| ".".into()))
 }
 
 /// App data folder (settings and logs).
+#[cfg(windows)]
 pub fn app_dir() -> PathBuf {
     appdata().join("VPN")
+}
+
+/// The user's home folder.
+#[cfg(target_os = "linux")]
+pub fn pasta_home() -> PathBuf {
+    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// App data folder (settings and logs): $XDG_CONFIG_HOME/vpn, usually ~/.config/vpn.
+#[cfg(target_os = "linux")]
+pub fn app_dir() -> PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| pasta_home().join(".config"))
+        .join("vpn")
+}
+
+/// Linux: contas.dat exists but could not be decrypted (keyring locked or
+/// unavailable). Saving would replace the user's accounts with an empty
+/// list, so nothing is written in this run.
+#[cfg(target_os = "linux")]
+static ILEGIVEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The saved accounts could not be read (Linux keyring unavailable).
+pub fn contas_ilegiveis() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        ILEGIVEL.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
 }
 
 fn settings_file() -> PathBuf {
@@ -139,12 +188,20 @@ fn ler_arquivo(caminho: &std::path::Path) -> Option<Settings> {
 }
 
 pub fn load_settings() -> Settings {
-    let mut s = ler_arquivo(&settings_file()).unwrap_or_default();
+    let lido = ler_arquivo(&settings_file());
+    #[cfg(target_os = "linux")]
+    if lido.is_none() && settings_file().exists() {
+        ILEGIVEL.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    let mut s = lido.unwrap_or_default();
     s.versao = VERSAO_SETTINGS;
     s
 }
 
 pub fn save_settings(settings: &Settings) {
+    if contas_ilegiveis() {
+        return;
+    }
     let Ok(json) = serde_json::to_vec(settings) else {
         return;
     };

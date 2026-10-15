@@ -30,6 +30,18 @@ impl Desenho {
             Desenho::DirectX12 => "DirectX 12",
         }
     }
+
+    pub fn eframe(self) -> eframe::Renderer {
+        match self {
+            Desenho::OpenGl => eframe::Renderer::Glow,
+            Desenho::DirectX12 => eframe::Renderer::Wgpu,
+        }
+    }
+
+    /// DirectX 12 is the exception, worth a line in the log.
+    pub fn excecao(self) -> bool {
+        self == Desenho::DirectX12
+    }
 }
 
 /// Marker left on this PC when OpenGL failed to open the window: from then

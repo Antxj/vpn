@@ -303,12 +303,19 @@ fn fresh_token(seed: &str, force_next: bool, stop: &AtomicBool, nome: &str) -> O
 /// Creates another virtual adapter with OpenVPN's own tapctl.exe. Needs
 /// administrator rights: Windows asks for them (UAC) at this moment. Rare:
 /// with OpenVPN 2.7 the service usually creates the adapter by itself.
+#[cfg(windows)]
 fn criar_adaptador(openvpn: &Path, hwid: &str) -> Result<(), String> {
     let tapctl = openvpn.with_file_name("tapctl.exe");
     match crate::elevate::executar_como_admin(&tapctl, &format!("create --hwid {hwid}"))? {
         0 => Ok(()),
         codigo => Err(trf!("o tapctl falhou (código {codigo})", "tapctl failed (code {codigo})")),
     }
+}
+
+/// Linux: OpenVPN creates its tun device by itself; nothing to create.
+#[cfg(target_os = "linux")]
+fn criar_adaptador(_openvpn: &Path, _hwid: &str) -> Result<(), String> {
+    Err("tun".into())
 }
 
 /// Starts the account's connection in the background.

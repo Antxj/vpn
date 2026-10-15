@@ -14,11 +14,15 @@
 //!   have a valid signature FROM THE SAME publisher. From the first signed
 //!   version on, an unsigned version is never installed.
 //!
-//! Everything through Windows' own APIs (WinHTTP, BCrypt, WinVerifyTrust):
-//! no new dependency, and WinHTTP honors the system proxy.
+//! Windows: everything through the system's own APIs (WinHTTP, BCrypt,
+//! WinVerifyTrust), and WinHTTP honors the system proxy. Linux: ureq (HTTPS
+//! with rustls, honors the proxy environment variables) and sha2; the Linux
+//! build is not signed, so only the SHA-256 check applies.
 
+#[cfg(windows)]
 use std::ffi::c_void;
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use std::ptr;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -26,7 +30,10 @@ use std::time::Duration;
 pub const REPOSITORIO: &str = "Antxj/vpn";
 pub const VERSAO_ATUAL: &str = env!("CARGO_PKG_VERSION");
 /// Name of the release asset that contains the app.
+#[cfg(windows)]
 const ARQUIVO: &str = "VPN.exe";
+#[cfg(target_os = "linux")]
+pub const ARQUIVO: &str = "VPN-linux-x86_64";
 const PRIMEIRA_VERIFICACAO: Duration = Duration::from_secs(30);
 /// Every 6 hours: an app that stays open all the time (started with
 /// Windows) still hears about a new version on the same day.
@@ -362,7 +369,8 @@ fn baixar_e_trocar(
         )
         .into());
     }
-    if !dados.starts_with(b"MZ") {
+    let executavel: &[u8] = if cfg!(windows) { b"MZ" } else { b"\x7fELF" };
+    if !dados.starts_with(executavel) {
         return Err(tr!(
             "O arquivo baixado não é um executável. Nada foi alterado.",
             "The downloaded file is not an executable. Nothing was changed."
@@ -379,6 +387,11 @@ fn baixar_e_trocar(
                 "Could not write the new version to the app folder: {e}"
             )
         })?;
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&novo, std::fs::Permissions::from_mode(0o755));
+    }
 
     // from the first signed version on, only the same publisher is accepted
     if let Some(editor) = assinante(alvo) {
@@ -435,6 +448,16 @@ pub const ARG_RECONECTAR: &str = "--reconectar";
 
 /// On the first start after an update: waits for the previous version to close
 /// (it is still disconnecting the VPNs and holding the single instance).
+#[cfg(target_os = "linux")]
+pub fn aguardar_processo(pid: u32, limite: Duration) {
+    let fim = std::time::Instant::now() + limite;
+    let caminho = format!("/proc/{pid}");
+    while std::path::Path::new(&caminho).exists() && std::time::Instant::now() < fim {
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
+#[cfg(windows)]
 pub fn aguardar_processo(pid: u32, limite: Duration) {
     const SYNCHRONIZE: u32 = 0x0010_0000;
     #[link(name = "kernel32")]
@@ -462,6 +485,13 @@ pub fn limpar_restos() {
 
 // ------------------------------------------------------- SHA-256 (BCrypt) --
 
+#[cfg(target_os = "linux")]
+fn sha256_hex(dados: &[u8]) -> Option<String> {
+    use sha2::Digest;
+    Some(sha2::Sha256::digest(dados).iter().map(|b| format!("{b:02x}")).collect())
+}
+
+#[cfg(windows)]
 fn sha256_hex(dados: &[u8]) -> Option<String> {
     use windows_sys::Win32::Security::Cryptography::{BCryptHash, BCRYPT_SHA256_ALG_HANDLE};
     let mut saida = [0u8; 32];
@@ -481,7 +511,14 @@ fn sha256_hex(dados: &[u8]) -> Option<String> {
 
 // ----------------------------------------------- signature (WinVerifyTrust) --
 
+/// Linux: the build is not signed.
+#[cfg(target_os = "linux")]
+pub fn assinante(_caminho: &Path) -> Option<String> {
+    None
+}
+
 /// Publisher name, if the file has a valid Authenticode signature.
+#[cfg(windows)]
 pub fn assinante(caminho: &Path) -> Option<String> {
     use windows_sys::Win32::Security::Cryptography::{
         CertGetNameStringW, CERT_NAME_SIMPLE_DISPLAY_TYPE,
@@ -576,7 +613,9 @@ impl ErroHttp {
 }
 
 /// Closes the WinHTTP handle when it goes out of scope.
+#[cfg(windows)]
 struct Handle(*mut c_void);
+#[cfg(windows)]
 impl Drop for Handle {
     fn drop(&mut self) {
         if !self.0.is_null() {
@@ -585,12 +624,54 @@ impl Drop for Handle {
     }
 }
 
+#[cfg(windows)]
 fn ultimo_erro() -> u32 {
     unsafe { windows_sys::Win32::Foundation::GetLastError() }
 }
 
 /// Simple GET (follows HTTPS redirects, like the one of the asset
 /// downloads). `progresso` receives the bytes read so far.
+#[cfg(target_os = "linux")]
+fn http_get(url: &str, limite: usize, progresso: &mut dyn FnMut(u64)) -> Result<Vec<u8>, ErroHttp> {
+    use std::io::Read;
+    if url::Url::parse(url).is_err() {
+        return Err(ErroHttp::Url);
+    }
+    let agente = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(15))
+        .timeout_read(Duration::from_secs(30))
+        .try_proxy_from_env(true)
+        .user_agent(&format!("VPN/{VERSAO_ATUAL} (+https://github.com/{REPOSITORIO})"))
+        .build();
+    let resposta = agente
+        .get(url)
+        .set("Accept", "application/vnd.github+json, application/octet-stream")
+        .set("X-GitHub-Api-Version", "2022-11-28")
+        .call()
+        .map_err(|e| match e {
+            ureq::Error::Status(s, _) => ErroHttp::Status(u32::from(s)),
+            ureq::Error::Transport(_) => ErroHttp::Rede(0),
+        })?;
+    let mut leitor = resposta.into_reader();
+    let mut corpo = Vec::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let lidos = leitor.read(&mut buf).map_err(|_| ErroHttp::Rede(0))?;
+        if lidos == 0 {
+            break;
+        }
+        corpo.extend_from_slice(&buf[..lidos]);
+        if corpo.len() > limite {
+            return Err(ErroHttp::Grande);
+        }
+        progresso(corpo.len() as u64);
+    }
+    Ok(corpo)
+}
+
+/// Simple GET (follows HTTPS redirects, like the one of the asset
+/// downloads). `progresso` receives the bytes read so far.
+#[cfg(windows)]
 fn http_get(url: &str, limite: usize, progresso: &mut dyn FnMut(u64)) -> Result<Vec<u8>, ErroHttp> {
     use windows_sys::Win32::Networking::WinHttp::*;
 
@@ -746,7 +827,7 @@ mod tests {
     fn le_a_release_do_github() {
         let anexo = format!(
             r#"{{"name":"LEIA-ME.txt","browser_download_url":"https://x/leia","size":10}},
-               {{"name":"VPN.exe","browser_download_url":"https://x/VPN.exe","size":123,
+               {{"name":"{ARQUIVO}","browser_download_url":"https://x/VPN.exe","size":123,
                  "digest":"sha256:{}"}}"#,
             HASH.to_uppercase()
         );
@@ -761,7 +842,8 @@ mod tests {
         // same or older version: nothing to offer
         assert_eq!(interpretar(&release("v1.0.0", &anexo), "1.0.0").unwrap(), None);
         // without the published digest, only from the page
-        let sem_hash = r#"{"name":"VPN.exe","browser_download_url":"https://x/VPN.exe","size":1}"#;
+        let sem_hash = format!(r#"{{"name":"{ARQUIVO}","browser_download_url":"https://x/VPN.exe","size":1}}"#);
+        let sem_hash = sem_hash.as_str();
         let v = interpretar(&release("v2.0.0", sem_hash), "1.0.0").unwrap().unwrap();
         assert!(!v.instalavel());
         // without the asset, only from the page
@@ -812,7 +894,8 @@ mod tests {
 
     #[test]
     fn baixa_confere_e_troca_o_executavel() {
-        let novo_exe = b"MZ versao nova do aplicativo".to_vec();
+        let cabecalho: &[u8] = if cfg!(windows) { b"MZ" } else { b"\x7fELF" };
+        let novo_exe = [cabecalho, b" versao nova do aplicativo"].concat();
         let hash = sha256_hex(&novo_exe).unwrap();
         let base = servidor(vec![("/VPN.exe", novo_exe.clone())]);
 
@@ -864,6 +947,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn assinatura_digital() {
         // unsigned file
         let p = std::env::temp_dir().join(format!("vpn-teste-assinatura-{}.exe", std::process::id()));

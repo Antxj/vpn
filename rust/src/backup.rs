@@ -12,7 +12,7 @@ use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use argon2::{Algorithm, Argon2, Params, Version};
 use serde::{Deserialize, Serialize};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 const MAGICO: &[u8; 8] = b"VPNBKP01";
 const TAM_SAL: usize = 16;
@@ -171,8 +171,14 @@ fn referencias(ovpn: &str) -> Vec<String> {
 }
 
 /// Relative path that stays inside its folder (no "..", drive or root).
+/// Same rule on every system ("/" and "\\" both count as separators): a
+/// backup made on Windows may be imported on Linux and vice versa.
 fn relativo_seguro(p: &Path) -> bool {
-    !p.as_os_str().is_empty() && p.components().all(|c| matches!(c, Component::Normal(_)))
+    let s = p.to_string_lossy();
+    !s.is_empty()
+        && !s.starts_with(['/', '\\'])
+        && !s.contains(':')
+        && s.split(['/', '\\']).all(|c| !c.is_empty() && c != "." && c != "..")
 }
 
 // ---------------------------------------------------------------- import --
@@ -234,8 +240,7 @@ pub fn instalar(contas: &[ContaExportada], base: &Path) -> Result<Vec<Conta>, St
 }
 
 fn nome_de_arquivo_simples(nome: &str) -> bool {
-    let p = Path::new(nome);
-    relativo_seguro(p) && p.components().count() == 1
+    relativo_seguro(Path::new(nome)) && !nome.contains(['/', '\\'])
 }
 
 /// Folder name from the account id (only letters, digits, '-' and '_').
@@ -349,7 +354,7 @@ mod tests {
                     auth-user-pass\nca ca.crt\nremote vpn.exemplo 1194\n";
         assert_eq!(referencias(ovpn), ["ca.crt", "pasta/meu cert.crt", "../fora.key"]);
         assert!(relativo_seguro(Path::new("pasta/meu cert.crt")));
-        for ruim in ["../fora.key", r"C:\chaves\a.key", r"\a.key", ""] {
+        for ruim in ["../fora.key", r"C:\chaves\a.key", r"\a.key", "", "/etc/x.key", r"..\x", "a/./b"] {
             assert!(!relativo_seguro(Path::new(ruim)), "{ruim}");
         }
     }

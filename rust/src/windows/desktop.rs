@@ -6,6 +6,9 @@ use std::ffi::c_void;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64};
 
+/// The last notification shown was about a new version: clicking it opens
+/// the update window (other notifications just open the app).
+static AVISO_E_DE_VERSAO: AtomicBool = AtomicBool::new(false);
 static MAIN_WNDPROC_INSTALLED: AtomicBool = AtomicBool::new(false);
 static ORIGINAL_MAIN_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 static ORIGINAL_MAIN_EXSTYLE: AtomicIsize = AtomicIsize::new(0);

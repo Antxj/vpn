@@ -10,19 +10,45 @@ mod accounts;
 mod backup;
 mod dialogo;
 mod dpapi;
-mod elevate;
 mod state;
-mod installer;
 mod engine;
 mod qr;
-mod renderer;
 mod routes;
-mod service;
-mod single;
-mod startup;
 mod support;
 mod totp;
 mod vpn;
+
+// what talks to the operating system: one module per system, same interface
+#[cfg(windows)]
+mod elevate;
+#[cfg(windows)]
+mod installer;
+#[cfg(target_os = "linux")]
+#[path = "linux/installer.rs"]
+mod installer;
+#[cfg(windows)]
+mod renderer;
+#[cfg(target_os = "linux")]
+#[path = "linux/renderer.rs"]
+mod renderer;
+#[cfg(target_os = "linux")]
+#[path = "linux/segredo.rs"]
+mod segredo;
+#[cfg(windows)]
+mod service;
+#[cfg(target_os = "linux")]
+#[path = "linux/service.rs"]
+mod service;
+#[cfg(windows)]
+mod single;
+#[cfg(target_os = "linux")]
+#[path = "linux/single.rs"]
+mod single;
+#[cfg(windows)]
+mod startup;
+#[cfg(target_os = "linux")]
+#[path = "linux/startup.rs"]
+mod startup;
 
 #[cfg(windows)]
 #[path = "windows/desktop.rs"]
@@ -49,7 +75,11 @@ use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIc
 
 const APP_TITLE: &str = "VPN";
 const WINDOW_TITLE: &str = concat!("VPN v", env!("CARGO_PKG_VERSION"));
+#[cfg(windows)]
 const OPENVPN_DOWNLOAD_URL: &str = "https://openvpn.net/community-downloads/";
+/// Linux: how to install OpenVPN with the distribution's package manager.
+#[cfg(target_os = "linux")]
+const OPENVPN_DOWNLOAD_URL: &str = "https://github.com/Antxj/vpn#linux";
 
 const ACCENT: egui::Color32 = egui::Color32::from_rgb(0x3b, 0x82, 0xf6);
 /// Window size (fixed: the window is not resizable).
@@ -60,9 +90,6 @@ static MAIN_WINDOW_VISIBLE: AtomicBool = AtomicBool::new(true);
 static TRAY_HINT_SHOWN: AtomicBool = AtomicBool::new(false);
 /// Request from the tray menu to open the update window.
 static ABRIR_ATUALIZACAO: AtomicBool = AtomicBool::new(false);
-/// The last notification shown was about a new version: clicking it opens
-/// the update window (other notifications just open the app).
-static AVISO_E_DE_VERSAO: AtomicBool = AtomicBool::new(false);
 /// Started by Windows with "start minimized": hide the window on the first frame.
 static INICIAR_OCULTO: AtomicBool = AtomicBool::new(false);
 /// This start came from an update done by the app itself.
@@ -70,17 +97,22 @@ static APOS_ATUALIZAR: AtomicBool = AtomicBool::new(false);
 /// Accounts that were on before the update (turned back on at start).
 static RECONECTAR: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
 
+#[cfg(windows)]
 const OPENVPN_CANDIDATES: &[&str] = &[
     r"C:\Program Files\OpenVPN\bin\openvpn.exe",
     r"C:\Program Files (x86)\OpenVPN\bin\openvpn.exe",
 ];
+#[cfg(target_os = "linux")]
+const OPENVPN_CANDIDATES: &[&str] = &["/usr/sbin/openvpn", "/usr/bin/openvpn", "/usr/local/sbin/openvpn"];
 /// Key written by the OpenVPN installer (finds installations outside the
 /// default path, e.g. on another drive).
+#[cfg(windows)]
 const OPENVPN_REG_KEY: &str = r"SOFTWARE\OpenVPN";
 
 // ------------------------------------------------------------- utilities ---
 
 /// Reads HKLM\SOFTWARE\OpenVPN\exe_path (written by the official installer).
+#[cfg(windows)]
 fn openvpn_from_registry() -> Option<PathBuf> {
     use windows_sys::Win32::System::Registry::{
         RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RRF_SUBKEY_WOW6432KEY,
@@ -122,13 +154,18 @@ fn find_openvpn() -> Option<PathBuf> {
         let p = PathBuf::from(custom);
         return if p.exists() { Some(p) } else { None };
     }
-    OPENVPN_CANDIDATES
-        .iter()
-        .map(PathBuf::from)
-        .find(|p| p.exists())
-        .or_else(openvpn_from_registry)
+    let achado = OPENVPN_CANDIDATES.iter().map(PathBuf::from).find(|p| p.exists());
+    #[cfg(windows)]
+    let achado = achado.or_else(openvpn_from_registry);
+    achado
 }
 
+#[cfg(target_os = "linux")]
+fn config_dirs() -> Vec<PathBuf> {
+    vec![dpapi::pasta_home(), PathBuf::from("/etc/openvpn/client")]
+}
+
+#[cfg(windows)]
 fn config_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Ok(profile) = std::env::var("USERPROFILE") {
@@ -1830,7 +1867,7 @@ impl App {
                     });
                     ui.add_space(4.0);
                     let escolhido = m.idioma();
-                    let automatico = trf!("Automático ({})", "Automatic ({})", i18n::do_windows().nome());
+                    let automatico = trf!("Automático ({})", "Automatic ({})", i18n::do_sistema().nome());
                     let mut novo = escolhido;
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new(tr!("Idioma", "Language")).color(ui.visuals().strong_text_color()));
@@ -2566,9 +2603,14 @@ impl eframe::App for App {
 }
 
 fn main() -> eframe::Result<()> {
-    // elevated helper (started by service::autorizar_usuario_atual, after the
-    // UAC prompt): authorizes the user in the OpenVPN service and exits
     let args: Vec<String> = std::env::args().collect();
+    // Linux: the helper that starts openvpn as root (run through pkexec)
+    #[cfg(target_os = "linux")]
+    if args.get(1).map(String::as_str) == Some(service::ARG_HELPER) {
+        std::process::exit(service::executar_helper(&args[2..]));
+    }
+    // elevated helper (started by service::autorizar_usuario_atual, after the
+    // UAC prompt or the polkit password): authorizes the user and exits
     if let Some(i) = args.iter().position(|a| a == service::ARG_AUTHORIZE) {
         let usuario = args.get(i + 1).cloned().unwrap_or_default();
         std::process::exit(service::adicionar_ao_grupo(&usuario));
@@ -2640,23 +2682,27 @@ fn main() -> eframe::Result<()> {
 
     let (desenho, motivo) = renderer::escolher(forcar_dx12);
     // only the exception goes to the log (useful when the log is sent to support)
-    if desenho == renderer::Desenho::DirectX12 {
+    if desenho.excecao() {
         state::log("", trf!("Interface: {} ({motivo})", "Interface: {} ({motivo})", desenho.nome()));
     }
 
+    let viewport = egui::ViewportBuilder::default()
+        .with_inner_size(WINDOW_SIZE)
+        .with_resizable(false)
+        .with_icon(std::sync::Arc::new(icon))
+        .with_title(WINDOW_TITLE)
+        .with_app_id("vpn");
+    // Linux: started minimized, the window is created hidden (on Windows,
+    // eframe ignores this and the window is cloaked instead)
+    #[cfg(target_os = "linux")]
+    let viewport = viewport.with_visible(!oculto);
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size(WINDOW_SIZE)
-            .with_resizable(false)
-            .with_icon(std::sync::Arc::new(icon))
-            .with_title(WINDOW_TITLE),
+        viewport,
         // OpenGL where the video driver offers it; DirectX 12 in remote desktop
         // sessions, VMs and PCs with only Windows' software OpenGL 1.1, where
         // OpenGL cannot open the window (see renderer.rs)
-        renderer: match desenho {
-            renderer::Desenho::OpenGl => eframe::Renderer::Glow,
-            renderer::Desenho::DirectX12 => eframe::Renderer::Wgpu,
-        },
+        renderer: desenho.eframe(),
+        #[cfg(windows)]
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
             supported_backends: eframe::wgpu::Backends::DX12,
             // static interface: no reason to wake up the dedicated GPU
