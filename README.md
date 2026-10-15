@@ -218,6 +218,12 @@ cargo test -- --ignored rota_direta   # creates and removes a real route (needs 
 .\build-release.ps1      # downloads and verifies the MSI, tests and builds the release (~12 MB)
 ```
 
+Before a pull request: `cargo fmt` and `cargo clippy --all-targets -- -D warnings`.
+The [check workflow](.github/workflows/check.yml) runs them, and the tests,
+on Windows and Linux for every pull request (Dependabot's included).
+Tests never touch the everyday app's files or keyring: they use a
+temporary folder of their own.
+
 `build-release.ps1` is the **only** correct way to build a release: it
 downloads the official OpenVPN installer (`rust/assets/openvpn.msi`, not in
 the repository), verifies its SHA-256 and OpenVPN Inc. signature, removes

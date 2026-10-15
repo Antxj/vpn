@@ -1,0 +1,79 @@
+# Checks every pull request (Dependabot's included) and every push to main
+# on both systems: formatting, clippy lints and the tests. Builds nothing
+# for release.
+#
+# Third-party actions are pinned by commit hash (not by tag, which can be
+# moved).
+
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust toolchain (GNU) and MinGW-w64
+        shell: pwsh
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal --component clippy
+          rustup default stable-x86_64-pc-windows-gnu
+          # windres and the linker of the GNU toolchain come from MinGW-w64
+          if (-not (Get-Command windres -ErrorAction SilentlyContinue)) {
+            if (Test-Path C:\mingw64\bin\windres.exe) {
+              "C:\mingw64\bin" >> $env:GITHUB_PATH
+            } else {
+              C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed `
+                mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils
+              "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
+            }
+          }
+
+      - name: Clippy
+        working-directory: rust
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Tests
+        working-directory: rust
+        run: cargo test --locked
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust toolchain and GTK 3
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential pkg-config libgtk-3-dev
+
+      - name: Formatting
+        working-directory: rust
+        run: cargo fmt --check
+
+      - name: Clippy
+        working-directory: rust
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Tests
+        working-directory: rust
+        run: cargo test --locked
