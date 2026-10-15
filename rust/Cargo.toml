@@ -7,11 +7,9 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/Antxj/vpn"
 
 [dependencies]
-# OpenGL (glow) draws the window; WGPU/DirectX 12 only where OpenGL is not
-# available (remote desktop, VMs) - see src/renderer.rs
-eframe = { version = "0.29", default-features = false, features = ["glow", "wgpu", "default_fonts"] }
-# eframe 0.29 does not enable WGPU's native DirectX 12 backend by itself.
-wgpu = { version = "22.1", default-features = false, features = ["dx12"] }
+# OpenGL (glow) draws the window. On Windows, WGPU/DirectX 12 is also built in
+# for where OpenGL is not available (remote desktop, VMs) - see src/renderer.rs
+eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts"] }
 tray-icon = "0.19"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "webp"] }
 rqrr = { version = "0.10", default-features = false }
@@ -22,14 +20,30 @@ base32 = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 arboard = "3"
-rfd = "0.17"
+# GTK dialogs on Linux (no dependency on an XDG portal service)
+rfd = { version = "0.17", default-features = false, features = ["gtk3"] }
 url = "2"
 open = "5"
 # account backup: password-derived key (Argon2id) + authenticated encryption (AES-256-GCM)
 argon2 = { version = "0.5", default-features = false, features = ["alloc"] }
 aes-gcm = { version = "0.11", default-features = false, features = ["aes", "alloc"] }
 getrandom = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+eframe = { version = "0.29", default-features = false, features = ["wgpu"] }
+# eframe 0.29 does not enable WGPU's native DirectX 12 backend by itself.
+wgpu = { version = "22.1", default-features = false, features = ["dx12"] }
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry", "Win32_Networking_WinHttp", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Security_WinTrust", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+# the tray icon needs a GTK main loop of its own (see src/linux/desktop.rs)
+gtk = "0.18"
+notify-rust = "4"
+# key of the saved accounts, kept in the desktop keyring (Secret Service)
+keyring = { version = "3", default-features = false, features = ["async-secret-service", "async-io", "crypto-rust"] }
+ureq = "2"
+sha2 = "0.10"
 
 [dev-dependencies]
 qrcode = "0.14"
