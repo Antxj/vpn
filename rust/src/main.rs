@@ -1585,8 +1585,10 @@ impl App {
             )
             .on_hover_cursor(egui::CursorIcon::PointingHand)
             .on_hover_text(tr!(
-                "Copia este log para mandar a quem dá suporte. Senhas, seeds,                  usuários e o nome do computador são escondidos.",
-                "Copies this log to send to whoever gives you support. Passwords,                  seeds, usernames and the computer name are hidden."
+                "Copia este log para mandar a quem dá suporte. Senhas, seeds, \
+                 usuários e o nome do computador são escondidos.",
+                "Copies this log to send to whoever gives you support. Passwords, \
+                 seeds, usernames and the computer name are hidden."
             ));
         if r.clicked() && !copiado {
             let conta = self
@@ -2606,8 +2608,13 @@ fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     // Linux: the helper that starts openvpn as root (run through pkexec)
     #[cfg(target_os = "linux")]
-    if args.get(1).map(String::as_str) == Some(service::ARG_HELPER) {
-        std::process::exit(service::executar_helper(&args[2..]));
+    match args.get(1).map(String::as_str) {
+        Some(service::ARG_HELPER) => std::process::exit(service::executar_helper(&args[2..])),
+        Some(service::ARG_VERSAO_DO_AJUDANTE) => {
+            println!("{}", service::VERSAO_DO_AJUDANTE);
+            std::process::exit(0);
+        }
+        _ => {}
     }
     // elevated helper (started by service::autorizar_usuario_atual, after the
     // UAC prompt or the polkit password): authorizes the user and exits
@@ -2795,6 +2802,39 @@ mod tests {
                 assert_eq!(estilo.visuals.dark_mode, escuro, "{sistema:?}, dark {escuro}");
                 // our fonts, not egui's defaults
                 assert_eq!(estilo.text_styles[&egui::TextStyle::Body].size, 15.0);
+            }
+        }
+    }
+
+    /// A string broken over several source lines without the trailing
+    /// backslash keeps the indentation inside the text (a long run of spaces
+    /// in the middle of a sentence).
+    #[test]
+    fn textos_sem_espacos_de_recuo() {
+        fn arquivos(dir: &std::path::Path, saida: &mut Vec<std::path::PathBuf>) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    arquivos(&p, saida);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    saida.push(p);
+                }
+            }
+        }
+        let mut lista = Vec::new();
+        arquivos(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut lista);
+        assert!(lista.len() > 10);
+        for arquivo in lista {
+            let texto = std::fs::read_to_string(&arquivo).unwrap();
+            for (n, linha) in texto.lines().enumerate() {
+                // inside a string literal: an odd number of quotes before the gap
+                if let Some(pos) = linha.trim_end().find("      ") {
+                    let antes = &linha[..pos];
+                    let tem_texto_antes = antes.trim_end().len() == antes.len() && !antes.trim().is_empty();
+                    if tem_texto_antes && antes.matches('"').count() % 2 == 1 {
+                        panic!("{}:{}: spaces inside a text: {}", arquivo.display(), n + 1, linha.trim());
+                    }
+                }
             }
         }
     }

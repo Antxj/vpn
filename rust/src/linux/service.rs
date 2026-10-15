@@ -33,6 +33,13 @@ const REGRA_PKLA: &str = "/etc/polkit-1/localauthority/50-local.d/49-vpn-openvpn
 pub const ARG_AUTHORIZE: &str = "--authorize-openvpn-user";
 /// Command line argument of the helper run through pkexec.
 pub const ARG_HELPER: &str = "--openvpn-helper";
+/// Prints VERSAO_DO_AJUDANTE (no root needed): tells the app whether the
+/// installed copy is current.
+pub const ARG_VERSAO_DO_AJUDANTE: &str = "--openvpn-helper-version";
+/// Version of the helper's rules. Raise it whenever the helper changes: the
+/// app then asks for the one-time authorization again (installing the new
+/// copy). App updates that do not touch the helper ask for nothing.
+pub const VERSAO_DO_AJUDANTE: u32 = 1;
 const PKEXEC: &str = "/usr/bin/pkexec";
 
 /// Why OpenVPN could not be started.
@@ -161,9 +168,41 @@ fn dividir(texto: &str) -> Vec<String> {
     args
 }
 
-/// The current user already went through the one-time authorization.
+/// The current user already went through the one-time authorization, and
+/// the installed helper is current.
 fn autorizado() -> bool {
-    Path::new(HELPER).exists() && Path::new(POLITICA).exists() && usuario_no_grupo(&usuario_atual(), GRUPO)
+    Path::new(POLITICA).exists() && usuario_no_grupo(&usuario_atual(), GRUPO) && ajudante_atual()
+}
+
+/// Asks the installed copy its version (as the user, no root). Up to 3 s: a
+/// copy that does not answer counts as outdated.
+fn ajudante_atual() -> bool {
+    let Ok(mut filho) = Command::new(HELPER)
+        .arg(ARG_VERSAO_DO_AJUDANTE)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let fim = Instant::now() + Duration::from_secs(3);
+    loop {
+        match filho.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if Instant::now() < fim => std::thread::sleep(Duration::from_millis(50)),
+            _ => {
+                let _ = filho.kill();
+                let _ = filho.wait();
+                return false;
+            }
+        }
+    }
+    let mut saida = String::new();
+    if let Some(mut s) = filho.stdout.take() {
+        let _ = s.read_to_string(&mut saida);
+    }
+    saida.trim() == VERSAO_DO_AJUDANTE.to_string()
 }
 
 fn usuario_no_grupo(usuario: &str, grupo: &str) -> bool {
@@ -576,7 +615,8 @@ pub fn executar_helper(args: &[String]) -> i32 {
     match helper(args) {
         Ok(codigo) => codigo,
         Err(e) => {
-            eprintln!("vpn-openvpn-helper: {e}");
+            // "ERROR:" makes the app show this line (vpn::erros_do_log)
+            eprintln!("ERROR: vpn-openvpn-helper: {e}");
             1
         }
     }

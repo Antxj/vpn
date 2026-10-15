@@ -255,6 +255,19 @@ mod tests {
         assert_eq!(volta.contas[1].autenticacao, Autenticacao::SenhaMaisToken);
     }
 
+    /// Test harness (screenshots on Linux): saves the settings described in
+    /// the JSON file VPN_EXEMPLO_JSON through the app's own encryption, in the
+    /// app folder of this environment (XDG_CONFIG_HOME / APPDATA).
+    ///     VPN_EXEMPLO_JSON=contas.json cargo test -- --ignored grava_contas_de_exemplo
+    #[test]
+    #[ignore]
+    fn grava_contas_de_exemplo() {
+        let json = std::fs::read(std::env::var("VPN_EXEMPLO_JSON").expect("VPN_EXEMPLO_JSON")).unwrap();
+        let s: Settings = serde_json::from_slice(&json).unwrap();
+        save_settings(&s);
+        assert_eq!(load_settings().contas.len(), s.contas.len());
+    }
+
     #[test]
     fn atualizacao_automatica_ligada_por_padrao() {
         // files written before this option existed do not have the field

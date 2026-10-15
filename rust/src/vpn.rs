@@ -448,6 +448,7 @@ fn iniciar_pelo_servico(nome: &str, cfg_dir: &Path, opcoes: &str) -> Option<serv
 }
 
 /// Explains the one-time authorization and asks whether to go ahead.
+#[cfg(windows)]
 fn perguntar_autorizacao() -> bool {
     let grupo = service::grupo_autorizado();
     crate::dialogo::sim_nao(
@@ -460,6 +461,25 @@ fn perguntar_autorizacao() -> bool {
              OpenVPN needs to authorize this Windows account once (adding it to \
              the \"{grupo}\" group).\n\nWindows will ask for an administrator's \
              permission now. Continue?"
+        ),
+        crate::dialogo::Nivel::Info,
+    )
+}
+
+/// Linux: the same one-time authorization, through polkit.
+#[cfg(target_os = "linux")]
+fn perguntar_autorizacao() -> bool {
+    let grupo = service::grupo_autorizado();
+    crate::dialogo::sim_nao(
+        &trf!(
+            "Para conectar sem pedir a senha de administrador a cada vez, esta \
+             conta do Linux precisa ser autorizada uma única vez (o app instala \
+             um ajudante do OpenVPN e inclui a conta no grupo \"{grupo}\").\n\n\
+             O sistema vai pedir a senha de um administrador agora. Continuar?",
+            "To connect without asking for the administrator password every time, \
+             this Linux account needs to be authorized once (the app installs an \
+             OpenVPN helper and adds the account to the \"{grupo}\" group).\n\n\
+             The system will ask for an administrator's password now. Continue?"
         ),
         crate::dialogo::Nivel::Info,
     )
