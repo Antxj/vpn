@@ -198,6 +198,16 @@ pub fn load_settings() -> Settings {
     s
 }
 
+/// Linux: reads the saved accounts again after they could not be read at
+/// start (keyring unlocked meanwhile). Some(settings) when it worked.
+#[cfg(target_os = "linux")]
+pub fn tentar_ler_de_novo() -> Option<Settings> {
+    let mut s = ler_arquivo(&settings_file())?;
+    s.versao = VERSAO_SETTINGS;
+    ILEGIVEL.store(false, std::sync::atomic::Ordering::SeqCst);
+    Some(s)
+}
+
 pub fn save_settings(settings: &Settings) {
     if contas_ilegiveis() {
         return;

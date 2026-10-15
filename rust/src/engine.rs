@@ -77,6 +77,19 @@ impl Motor {
             .collect()
     }
 
+    /// Linux: reads the saved accounts again (keyring unlocked after the app
+    /// started). True when it worked.
+    #[cfg(target_os = "linux")]
+    pub fn ler_contas_de_novo(&self) -> bool {
+        match dpapi::tentar_ler_de_novo() {
+            Some(s) => {
+                *self.settings.lock().unwrap() = s;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Adds or updates an account (by id) and saves it to disk.
     pub fn salvar_conta(&self, mut conta: Conta) {
         let mut s = self.settings.lock().unwrap();

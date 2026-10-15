@@ -73,14 +73,30 @@ fn chave_de(origem: u8, criar: bool) -> Option<[u8; 32]> {
     let k = match origem {
         NO_CHAVEIRO => {
             let entrada = chaveiro()?;
-            match entrada.get_password() {
-                Ok(s) => de_hex(&s)?,
-                Err(keyring::Error::NoEntry) if criar => {
-                    let k = nova_chave()?;
-                    entrada.set_password(&hex(&k)).ok()?;
-                    k
+            // started with the session, the keyring may not be ready yet:
+            // tries for a few seconds before giving up. A slow failure means
+            // the user answered the unlock prompt (cancelled): no new prompt.
+            let mut tentativas = 0;
+            loop {
+                let inicio = std::time::Instant::now();
+                let resposta = entrada.get_password();
+                if resposta.is_err() && inicio.elapsed() > std::time::Duration::from_secs(2) {
+                    tentativas = 10;
                 }
-                Err(_) => return None,
+                match resposta {
+                    Ok(s) => break de_hex(&s)?,
+                    Err(keyring::Error::NoEntry) if criar => {
+                        let k = nova_chave()?;
+                        entrada.set_password(&hex(&k)).ok()?;
+                        break k;
+                    }
+                    Err(keyring::Error::NoEntry) => return None,
+                    Err(_) if tentativas < 10 => {
+                        tentativas += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    }
+                    Err(_) => return None,
+                }
             }
         }
         _ => match std::fs::read_to_string(arquivo_da_chave()) {

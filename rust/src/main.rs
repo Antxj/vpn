@@ -1282,6 +1282,27 @@ impl App {
             ui.add_space(8.0);
         };
 
+        // Linux: contas.dat exists but the keyring did not give its key
+        #[cfg(target_os = "linux")]
+        if dpapi::contas_ilegiveis() {
+            let mut de_novo = false;
+            faixa(
+                ui,
+                tr!(
+                    "Não consegui ler as contas salvas:\no chaveiro do sistema está trancado.",
+                    "Could not read the saved accounts:\nthe system keyring is locked."
+                ),
+                &mut |ui| de_novo = ui.button(tr!("Tentar de novo", "Try again")).clicked(),
+            );
+            if de_novo && engine::get().ler_contas_de_novo() {
+                let m = engine::get();
+                i18n::aplicar(m.idioma());
+                self.dark = m.tema_escuro();
+                apply_style(ui.ctx(), self.dark);
+                self.tela = if m.contas().is_empty() { Tela::Contas } else { Tela::Inicio };
+            }
+        }
+
         if self.openvpn_missing {
             let embutido = installer::is_available();
             let texto = if self.installing {
@@ -1731,7 +1752,8 @@ impl App {
                 egui::RichText::new(tr!("Nova conta", "New account")).color(egui::Color32::WHITE),
             )
             .fill(ACCENT);
-            if ui.add(nova).clicked() {
+            // saved accounts unreadable (Linux keyring): nothing could be saved
+            if ui.add_enabled(!dpapi::contas_ilegiveis(), nova).clicked() {
                 let mut c = Conta::nova();
                 c.config = find_default_config()
                     .map(|p| p.to_string_lossy().into_owned())
