@@ -8,6 +8,7 @@ mod i18n;
 mod update;
 mod accounts;
 mod backup;
+mod dialogo;
 mod dpapi;
 mod elevate;
 mod state;
@@ -172,11 +173,7 @@ fn label_color(dark: bool) -> egui::Color32 {
 }
 
 fn error_box(msg: &str) {
-    rfd::MessageDialog::new()
-        .set_title(APP_TITLE)
-        .set_description(msg)
-        .set_level(rfd::MessageLevel::Error)
-        .show();
+    dialogo::mensagem(msg, dialogo::Nivel::Erro);
 }
 
 fn report_startup_error(error: &eframe::Error) {
@@ -451,9 +448,8 @@ fn alternar_conta(id: &str) -> Result<(), ErroConexao> {
     let conflitos = m.conflitos_de_rota(id);
     if !conflitos.is_empty() {
         let nome = m.conta(id).map(|c| c.nome_exibicao().to_string()).unwrap_or_default();
-        let resposta = rfd::MessageDialog::new()
-            .set_title(APP_TITLE)
-            .set_description(trf!(
+        let sim = dialogo::sim_nao(
+            &trf!(
                 "\"{nome}\" e \"{}\" mandam todo o tráfego da internet pela VPN.\n\n\
                  Com as duas conectadas, só a última funciona como rota padrão \
                  (a outra continua acessando apenas a própria rede). Conectar mesmo assim?",
@@ -461,11 +457,10 @@ fn alternar_conta(id: &str) -> Result<(), ErroConexao> {
                  With both connected, only the last one works as the default route \
                  (the other one keeps reaching only its own network). Connect anyway?",
                 conflitos.join("\", \"")
-            ))
-            .set_level(rfd::MessageLevel::Warning)
-            .set_buttons(rfd::MessageButtons::YesNo)
-            .show();
-        if resposta != rfd::MessageDialogResult::Yes {
+            ),
+            dialogo::Nivel::Aviso,
+        );
+        if !sim {
             return Ok(());
         }
     }
@@ -661,6 +656,14 @@ fn aba(ui: &mut egui::Ui, texto: &str, ativa: bool, cor: Option<egui::Color32>, 
     r.clicked()
 }
 
+/// File filter of the account backup.
+fn filtro_backup() -> dialogo::Filtro<'static> {
+    dialogo::Filtro {
+        nome: tr!("Backup do VPN", "VPN backup"),
+        extensoes: &["vpnbackup"],
+    }
+}
+
 /// "1 conta", "3 contas" (in the current language).
 fn contas_texto(n: usize) -> String {
     if n == 1 {
@@ -684,12 +687,11 @@ fn executar_backup(jb: &mut JanelaBackup, m: &engine::Motor) -> Result<(), Strin
             return Err(tr!("As duas senhas não são iguais.", "The two passwords do not match.").into());
         }
         let data = state::data_e_hora_local();
-        let Some(destino) = rfd::FileDialog::new()
-            .add_filter(tr!("Backup do VPN", "VPN backup"), &["vpnbackup"])
-            .set_title(tr!("Salvar o backup das contas", "Save the account backup"))
-            .set_file_name(format!("VPN-{}.vpnbackup", &data[..10]))
-            .save_file()
-        else {
+        let Some(destino) = dialogo::salvar_arquivo(
+            tr!("Salvar o backup das contas", "Save the account backup"),
+            filtro_backup(),
+            &format!("VPN-{}.vpnbackup", &data[..10]),
+        ) else {
             return Ok(());
         };
         let r = backup::exportar(&m.contas(), &jb.senha, &destino)?;
@@ -1068,13 +1070,7 @@ impl App {
                 false,
             )
         };
-        let sim = rfd::MessageDialog::new()
-            .set_title(APP_TITLE)
-            .set_description(&pergunta)
-            .set_level(rfd::MessageLevel::Warning)
-            .set_buttons(rfd::MessageButtons::YesNo)
-            .show();
-        if sim == rfd::MessageDialogResult::Yes {
+        if dialogo::sim_nao(&pergunta, dialogo::Nivel::Aviso) {
             if instala {
                 self.start_openvpn_install();
             } else {
@@ -1176,11 +1172,14 @@ impl App {
     }
 
     fn qr_from_file(&mut self) {
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter(tr!("Imagens", "Images"), &["png", "jpg", "jpeg", "bmp", "gif", "webp"])
-            .set_title(tr!("Escolha a imagem do QR Code", "Choose the QR code image"))
-            .pick_file()
-        else {
+        let Some(path) = dialogo::abrir_arquivo(
+            tr!("Escolha a imagem do QR Code", "Choose the QR code image"),
+            dialogo::Filtro {
+                nome: tr!("Imagens", "Images"),
+                extensoes: &["png", "jpg", "jpeg", "bmp", "gif", "webp"],
+            },
+            None,
+        ) else {
             return;
         };
         match image::open(&path) {
@@ -1204,16 +1203,15 @@ impl App {
         match img {
             Some(img) => self.import_qr_image(img),
             None => {
-                rfd::MessageDialog::new()
-                    .set_title(APP_TITLE)
-                    .set_description(tr!(
+                dialogo::mensagem(
+                    tr!(
                         "Não há imagem na área de transferência.\n\
                          Copie a imagem do QR Code e tente de novo.",
                         "There is no image on the clipboard.\n\
                          Copy the QR code image and try again."
-                    ))
-                    .set_level(rfd::MessageLevel::Info)
-                    .show();
+                    ),
+                    dialogo::Nivel::Info,
+                );
             }
         }
     }
@@ -1708,17 +1706,15 @@ impl App {
             self.abrir_editor(c, false);
         }
         if let Some(c) = remover {
-            let sim = rfd::MessageDialog::new()
-                .set_title(APP_TITLE)
-                .set_description(trf!(
+            let sim = dialogo::sim_nao(
+                &trf!(
                     "Remover a conta \"{}\"?\n\nUsuário, seed e senha salvos dela serão apagados.",
                     "Remove the account \"{}\"?\n\nIts saved username, seed and password will be deleted.",
                     c.nome_exibicao()
-                ))
-                .set_level(rfd::MessageLevel::Warning)
-                .set_buttons(rfd::MessageButtons::YesNo)
-                .show();
-            if sim == rfd::MessageDialogResult::Yes {
+                ),
+                dialogo::Nivel::Aviso,
+            );
+            if sim {
                 m.remover_conta(&c.id);
             }
         }
@@ -1931,11 +1927,11 @@ impl App {
                             self.backup = Some(JanelaBackup::nova(true, PathBuf::new()));
                         }
                         if ui.button(tr!("Importar...", "Import...")).clicked() {
-                            if let Some(p) = rfd::FileDialog::new()
-                                .add_filter(tr!("Backup do VPN", "VPN backup"), &["vpnbackup"])
-                                .set_title(tr!("Escolha o backup das contas", "Choose the account backup"))
-                                .pick_file()
-                            {
+                            if let Some(p) = dialogo::abrir_arquivo(
+                                tr!("Escolha o backup das contas", "Choose the account backup"),
+                                filtro_backup(),
+                                None,
+                            ) {
                                 self.backup = Some(JanelaBackup::nova(false, p));
                             }
                         }
@@ -2232,13 +2228,15 @@ impl App {
                             .map(PathBuf::from)
                             .filter(|p| p.is_dir())
                             .or_else(|| config_dirs().into_iter().find(|d| d.is_dir()));
-                        let mut dlg = rfd::FileDialog::new()
-                            .add_filter(tr!("Config OpenVPN", "OpenVPN config"), &["ovpn"])
-                            .set_title(tr!("Escolha o arquivo .ovpn", "Choose the .ovpn file"));
-                        if let Some(dir) = inicio {
-                            dlg = dlg.set_directory(dir);
-                        }
-                        if let Some(p) = dlg.pick_file() {
+                        let escolhido = dialogo::abrir_arquivo(
+                            tr!("Escolha o arquivo .ovpn", "Choose the .ovpn file"),
+                            dialogo::Filtro {
+                                nome: tr!("Config OpenVPN", "OpenVPN config"),
+                                extensoes: &["ovpn"],
+                            },
+                            inicio,
+                        );
+                        if let Some(p) = escolhido {
                             ed.conta.config = p.to_string_lossy().into_owned();
                             ajustar_autenticacao(&mut ed.conta);
                             if ed.conta.nome.trim().is_empty() {

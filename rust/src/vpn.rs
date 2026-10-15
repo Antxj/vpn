@@ -443,9 +443,8 @@ fn iniciar_pelo_servico(nome: &str, cfg_dir: &Path, opcoes: &str) -> Option<serv
 /// Explains the one-time authorization and asks whether to go ahead.
 fn perguntar_autorizacao() -> bool {
     let grupo = service::grupo_autorizado();
-    rfd::MessageDialog::new()
-        .set_title("VPN")
-        .set_description(trf!(
+    crate::dialogo::sim_nao(
+        &trf!(
             "Para conectar sem pedir permissão de administrador a cada vez, o \
              OpenVPN precisa autorizar esta conta do Windows uma única vez \
              (incluindo-a no grupo \"{grupo}\").\n\nO Windows vai pedir a \
@@ -454,11 +453,9 @@ fn perguntar_autorizacao() -> bool {
              OpenVPN needs to authorize this Windows account once (adding it to \
              the \"{grupo}\" group).\n\nWindows will ask for an administrator's \
              permission now. Continue?"
-        ))
-        .set_level(rfd::MessageLevel::Info)
-        .set_buttons(rfd::MessageButtons::YesNo)
-        .show()
-        == rfd::MessageDialogResult::Yes
+        ),
+        crate::dialogo::Nivel::Info,
+    )
 }
 
 /// Runs one connection attempt. Returns Some(reason) when it is worth trying
