@@ -15,6 +15,10 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+/// The keyring may be locked (or not running yet): the saved accounts are
+/// then kept untouched until it opens (settings.rs).
+pub const PODE_FICAR_INDISPONIVEL: bool = true;
+
 const MAGICO: &[u8; 7] = b"VPNLNX1";
 const SERVICO: &str = "io.github.antxj.vpn";
 const NO_CHAVEIRO: u8 = b'K';
@@ -31,7 +35,7 @@ fn usuario_do_chaveiro() -> String {
 }
 
 fn arquivo_da_chave() -> PathBuf {
-    crate::dpapi::app_dir().join(".chave")
+    crate::settings::app_dir().join(".chave")
 }
 
 fn hex(b: &[u8]) -> String {
@@ -103,7 +107,7 @@ fn chave_de(origem: u8, criar: bool) -> Option<[u8; 32]> {
             Ok(s) => de_hex(&s)?,
             Err(_) if criar => {
                 let k = nova_chave()?;
-                let _ = std::fs::create_dir_all(crate::dpapi::app_dir());
+                let _ = std::fs::create_dir_all(crate::settings::app_dir());
                 let criado = std::fs::OpenOptions::new()
                     .write(true)
                     .create_new(true)

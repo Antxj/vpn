@@ -323,7 +323,7 @@ pub fn usuario_atual() -> String {
 pub fn autorizar_usuario_atual() -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let params = format!("{ARG_AUTHORIZE} {}", argumento(&usuario_atual()));
-    match crate::elevate::executar_como_admin(&exe, &params)? {
+    match super::elevate::executar_como_admin(&exe, &params)? {
         0 => Ok(()),
         codigo => Err(trf!(
             "não foi possível autorizar o usuário (código {codigo})",
@@ -368,6 +368,42 @@ pub fn adicionar_ao_grupo(usuario: &str) -> i32 {
     match r {
         NERR_SUCCESS | ERROR_MEMBER_IN_ALIAS => 0,
         e => e as i32,
+    }
+}
+
+/// Creates another virtual adapter with OpenVPN's own tapctl.exe. Needs
+/// administrator rights: Windows asks for them (UAC) at this moment. Rare:
+/// with OpenVPN 2.7 the service usually creates the adapter by itself.
+pub fn criar_adaptador(openvpn: &Path, hwid: &str) -> Result<(), String> {
+    let tapctl = openvpn.with_file_name("tapctl.exe");
+    match super::elevate::executar_como_admin(&tapctl, &format!("create --hwid {hwid}"))? {
+        0 => Ok(()),
+        codigo => Err(trf!("o tapctl falhou (código {codigo})", "tapctl failed (code {codigo})")),
+    }
+}
+
+/// Explanation of the one-time authorization (asked before running it).
+pub fn pergunta_de_autorizacao() -> String {
+    let grupo = grupo_autorizado();
+    trf!(
+        "Para conectar sem pedir permissão de administrador a cada vez, o \
+         OpenVPN precisa autorizar esta conta do Windows uma única vez \
+         (incluindo-a no grupo \"{grupo}\").\n\nO Windows vai pedir a \
+         permissão de um administrador agora. Continuar?",
+        "To connect without asking for administrator permission every time, \
+         OpenVPN needs to authorize this Windows account once (adding it to \
+         the \"{grupo}\" group).\n\nWindows will ask for an administrator's \
+         permission now. Continue?"
+    )
+}
+
+/// The app run as the elevated helper that authorizes a user (after the UAC
+/// prompt): does that job and exits.
+pub fn tratar_argumentos_especiais() {
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(i) = args.iter().position(|a| a == ARG_AUTHORIZE) {
+        let usuario = args.get(i + 1).cloned().unwrap_or_default();
+        std::process::exit(adicionar_ao_grupo(&usuario));
     }
 }
 

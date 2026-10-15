@@ -222,37 +222,43 @@ Linux: Rust, `pkg-config` e os arquivos de desenvolvimento do GTK 3
 (`sudo apt install build-essential pkg-config libgtk-3-dev`), e depois
 `bash rust/build-release-linux.sh` (testes, build sem caminhos da máquina e conferências).
 
-Estrutura (o que fala com o sistema operacional tem um módulo por sistema,
-com a mesma interface: `src/<módulo>.rs` no Windows, `src/linux/` no Linux):
+Estrutura: o código comum a todos os sistemas fica em `rust/src/`; tudo o
+que fala com o sistema operacional fica em
+[`rust/src/platform/`](rust/src/platform/mod.rs), com uma pasta por sistema
+(`windows/`, `linux/`) com **os mesmos módulos e a mesma interface** — o resto
+do app não sabe em que sistema está rodando. Um sistema novo (ex.: macOS) é
+uma pasta nova com os mesmos módulos.
 
-- [`main.rs`](rust/src/main.rs) — interface (egui) e bandeja
-- [`windows/desktop.rs`](rust/src/windows/desktop.rs),
-  [`linux/desktop.rs`](rust/src/linux/desktop.rs) — janela, ícone da bandeja e
-  notificações de cada sistema; [`dialogo.rs`](rust/src/dialogo.rs) — diálogos nativos
-- [`renderer.rs`](rust/src/renderer.rs) — OpenGL ou DirectX 12 para a janela
-- [`engine.rs`](rust/src/engine.rs) — contas e conexões ativas (usado pela
-  interface e pelo menu da bandeja)
-- [`vpn.rs`](rust/src/vpn.rs) — uma conexão: `openvpn.exe` iniciado pelo
-  serviço, interface de gerenciamento e criação de adaptador sob demanda
-- [`service.rs`](rust/src/service.rs) — cliente do serviço interativo do
-  OpenVPN (protocolo por named pipe) e autorização do usuário;
-  [`linux/service.rs`](rust/src/linux/service.rs) — o ajudante pkexec/polkit
-  que inicia o OpenVPN como root no Linux
-- [`elevate.rs`](rust/src/elevate.rs) — permissão de administrador sob demanda (UAC)
-- [`startup.rs`](rust/src/startup.rs) — "Iniciar com o Windows" (chave Run do usuário)
-- [`state.rs`](rust/src/state.rs) — estado compartilhado por conta e log;
-  escrito pelas conexões, lido pela interface e pela bandeja
-- [`accounts.rs`](rust/src/accounts.rs) — modelo de conta, autenticação e validação
-- [`dpapi.rs`](rust/src/dpapi.rs) — criptografia e persistência
-  ([`linux/segredo.rs`](rust/src/linux/segredo.rs): chave no chaveiro do sistema)
-- [`routes.rs`](rust/src/routes.rs) — rotas que mantêm outras VPNs fora de um
-  túnel completo e detecção do tipo de túnel (IP Helper do Windows)
-- [`i18n.rs`](rust/src/i18n.rs) — idioma (português/inglês) e as macros
-  `tr!`/`trf!` dos textos
-- [`update.rs`](rust/src/update.rs) — verificação e instalação de
-  versões novas (WinHTTP, SHA-256 pelo BCrypt e assinatura pelo WinVerifyTrust)
-- [`totp.rs`](rust/src/totp.rs) (RFC 6238), [`qr.rs`](rust/src/qr.rs),
-  [`installer.rs`](rust/src/installer.rs), [`single.rs`](rust/src/single.rs)
+```
+rust/src/
+  main.rs        interface (egui) e menu da bandeja
+  engine.rs      contas e conexões ativas
+  vpn.rs         uma conexão: OpenVPN, interface de gerenciamento, quedas
+  state.rs       estado e log de cada conta
+  accounts.rs    modelo de conta, autenticação, validação
+  settings.rs    configurações e contas salvas (contas.dat)
+  backup.rs      backup das contas protegido por senha
+  update.rs      verificação e instalação de versões novas
+  routes.rs      túnel completo/dividido, rotas que mantêm outras VPNs de fora
+  dialogs.rs     diálogos nativos (mensagens, perguntas, arquivos)
+  i18n.rs        português/inglês e as macros de texto tr!/trf!
+  support.rs     "Copiar" do log, sem segredos
+  totp.rs        TOTP (RFC 6238)    qr.rs  importação por QR Code
+  platform/
+    mod.rs       a interface que cada sistema implementa
+    windows/     Win32: DPAPI, serviço interativo do OpenVPN, UAC, registro,
+                 WinHTTP/WinVerifyTrust, DirectX 12 de reserva, MSI embutido
+    linux/       bandeja e diálogos GTK, chaveiro, ajudante pkexec/polkit,
+                 /proc/net/route, autostart XDG, ureq
+```
+
+Módulos de cada `platform/<sistema>/`: `desktop` (janela, ícone da bandeja,
+notificações), `dialogs`, `installer`, `locale` (idioma e hora local do
+sistema), `openvpn` (onde ficam o OpenVPN e as configs), `paths` (pasta de
+dados), `renderer`, `routing` (tabela de rotas), `secret` (proteção das
+contas), `service` (iniciar o OpenVPN sem administrador), `single`
+(instância única), `startup` (iniciar com o sistema) e `updater` (download e
+conferências de uma versão nova); o Windows tem também o `elevate` (UAC).
 
 Variáveis úteis para desenvolvimento e testes:
 

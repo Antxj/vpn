@@ -35,3 +35,12 @@ pub fn opengl_funcionou() {}
 pub fn falhou_ao_abrir() -> bool {
     false
 }
+
+/// Options of the main window. Started minimized, the window is created hidden.
+pub fn opcoes(desenho: Desenho, viewport: eframe::egui::ViewportBuilder, oculto: bool) -> eframe::NativeOptions {
+    eframe::NativeOptions {
+        viewport: viewport.with_visible(!oculto),
+        renderer: desenho.eframe(),
+        ..Default::default()
+    }
+}

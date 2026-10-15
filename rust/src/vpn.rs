@@ -125,7 +125,7 @@ fn dco_ocupado(estado: &str, detalhe: &str) -> bool {
 }
 
 fn arquivo_de_pids() -> PathBuf {
-    crate::dpapi::app_dir().join("openvpn.pids")
+    crate::settings::app_dir().join("openvpn.pids")
 }
 
 fn registrar_processo(conta_id: &str, pid: Option<u32>) {
@@ -135,7 +135,7 @@ fn registrar_processo(conta_id: &str, pid: Option<u32>) {
         lista.push((conta_id.to_string(), pid));
     }
     let texto: String = lista.iter().map(|(_, pid)| format!("{pid}\n")).collect();
-    let _ = std::fs::create_dir_all(crate::dpapi::app_dir());
+    let _ = std::fs::create_dir_all(crate::settings::app_dir());
     let _ = std::fs::write(arquivo_de_pids(), texto);
 }
 
@@ -273,7 +273,7 @@ fn texto_do_estado(partes: &[&str]) -> String {
 
 /// OpenVPN's own log for the account (rewritten on every connection).
 pub fn log_path(conta_id: &str) -> PathBuf {
-    crate::dpapi::app_dir()
+    crate::settings::app_dir()
         .join("logs")
         .join(format!("openvpn-{conta_id}.log"))
 }
@@ -298,24 +298,6 @@ fn fresh_token(seed: &str, force_next: bool, stop: &AtomicBool, nome: &str) -> O
         }
     }
     totp::totp_now(seed)
-}
-
-/// Creates another virtual adapter with OpenVPN's own tapctl.exe. Needs
-/// administrator rights: Windows asks for them (UAC) at this moment. Rare:
-/// with OpenVPN 2.7 the service usually creates the adapter by itself.
-#[cfg(windows)]
-fn criar_adaptador(openvpn: &Path, hwid: &str) -> Result<(), String> {
-    let tapctl = openvpn.with_file_name("tapctl.exe");
-    match crate::elevate::executar_como_admin(&tapctl, &format!("create --hwid {hwid}"))? {
-        0 => Ok(()),
-        codigo => Err(trf!("o tapctl falhou (código {codigo})", "tapctl failed (code {codigo})")),
-    }
-}
-
-/// Linux: OpenVPN creates its tun device by itself; nothing to create.
-#[cfg(target_os = "linux")]
-fn criar_adaptador(_openvpn: &Path, _hwid: &str) -> Result<(), String> {
-    Err("tun".into())
 }
 
 /// Starts the account's connection in the background.
@@ -353,7 +335,7 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
                     "All network adapters are in use; creating another one..."
                 ),
             );
-            match criar_adaptador(&openvpn, hwid) {
+            match service::criar_adaptador(&openvpn, hwid) {
                 Ok(()) => state::log(
                     &nome,
                     tr!("Adaptador criado. Conectando de novo...", "Adapter created. Connecting again..."),
@@ -448,41 +430,8 @@ fn iniciar_pelo_servico(nome: &str, cfg_dir: &Path, opcoes: &str) -> Option<serv
 }
 
 /// Explains the one-time authorization and asks whether to go ahead.
-#[cfg(windows)]
 fn perguntar_autorizacao() -> bool {
-    let grupo = service::grupo_autorizado();
-    crate::dialogo::sim_nao(
-        &trf!(
-            "Para conectar sem pedir permissão de administrador a cada vez, o \
-             OpenVPN precisa autorizar esta conta do Windows uma única vez \
-             (incluindo-a no grupo \"{grupo}\").\n\nO Windows vai pedir a \
-             permissão de um administrador agora. Continuar?",
-            "To connect without asking for administrator permission every time, \
-             OpenVPN needs to authorize this Windows account once (adding it to \
-             the \"{grupo}\" group).\n\nWindows will ask for an administrator's \
-             permission now. Continue?"
-        ),
-        crate::dialogo::Nivel::Info,
-    )
-}
-
-/// Linux: the same one-time authorization, through polkit.
-#[cfg(target_os = "linux")]
-fn perguntar_autorizacao() -> bool {
-    let grupo = service::grupo_autorizado();
-    crate::dialogo::sim_nao(
-        &trf!(
-            "Para conectar sem pedir a senha de administrador a cada vez, esta \
-             conta do Linux precisa ser autorizada uma única vez (o app instala \
-             um ajudante do OpenVPN e inclui a conta no grupo \"{grupo}\").\n\n\
-             O sistema vai pedir a senha de um administrador agora. Continuar?",
-            "To connect without asking for the administrator password every time, \
-             this Linux account needs to be authorized once (the app installs an \
-             OpenVPN helper and adds the account to the \"{grupo}\" group).\n\n\
-             The system will ask for an administrator's password now. Continue?"
-        ),
-        crate::dialogo::Nivel::Info,
-    )
+    crate::dialogs::sim_nao(&service::pergunta_de_autorizacao(), crate::dialogs::Nivel::Info)
 }
 
 /// Runs one connection attempt. Returns Some(reason) when it is worth trying

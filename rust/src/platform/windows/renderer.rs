@@ -48,7 +48,7 @@ impl Desenho {
 /// on this version goes straight to DirectX 12 here. It holds the app version,
 /// so the next version tries OpenGL again (a new video driver may fix it).
 fn marcador() -> PathBuf {
-    crate::dpapi::app_dir().join("opengl-falhou")
+    crate::settings::app_dir().join("opengl-falhou")
 }
 
 /// While OpenGL has not drawn its first frames yet. If the app stops in that
@@ -82,7 +82,7 @@ pub fn falhou_ao_abrir() -> bool {
 }
 
 fn reabrir_com_dx12() -> bool {
-    let _ = std::fs::create_dir_all(crate::dpapi::app_dir());
+    let _ = std::fs::create_dir_all(crate::settings::app_dir());
     let _ = std::fs::write(marcador(), crate::update::VERSAO_ATUAL);
     let Ok(exe) = std::env::current_exe() else {
         return false;
@@ -168,7 +168,7 @@ fn versao_do_opengl() -> Option<(String, String)> {
 
     unsafe {
         // a plain STATIC window of our own, only to get a device context
-        let classe = crate::single::wide("STATIC");
+        let classe = super::single::wide("STATIC");
         let janela = CreateWindowExW(
             0,
             classe.as_ptr(),
@@ -211,6 +211,25 @@ fn versao_do_opengl() -> Option<(String, String)> {
         }
         DestroyWindow(janela);
         resultado
+    }
+}
+
+/// Options of the main window: OpenGL where the video driver offers it;
+/// DirectX 12 in remote desktop sessions, VMs and PCs with only Windows'
+/// software OpenGL 1.1. `_oculto` (started minimized): eframe ignores a
+/// hidden window on Windows; desktop.rs cloaks it instead.
+pub fn opcoes(desenho: Desenho, viewport: eframe::egui::ViewportBuilder, _oculto: bool) -> eframe::NativeOptions {
+    eframe::NativeOptions {
+        viewport,
+        renderer: desenho.eframe(),
+        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+            supported_backends: eframe::wgpu::Backends::DX12,
+            // static interface: no reason to wake up the dedicated GPU
+            // (saves battery and memory on hybrid laptops)
+            power_preference: eframe::wgpu::PowerPreference::LowPower,
+            ..Default::default()
+        },
+        ..Default::default()
     }
 }
 

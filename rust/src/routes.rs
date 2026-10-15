@@ -18,20 +18,6 @@
 //! reachable through another VPN or through the local network itself.
 
 use std::net::Ipv4Addr;
-#[cfg(windows)]
-use windows_sys::Win32::NetworkManagement::IpHelper::*;
-#[cfg(windows)]
-use windows_sys::Win32::Networking::WinSock::{AF_INET, SOCKADDR_INET};
-
-#[cfg(windows)]
-fn ipv4(sa: &SOCKADDR_INET) -> Option<Ipv4Addr> {
-    unsafe {
-        if sa.si_family != AF_INET {
-            return None;
-        }
-        Some(Ipv4Addr::from(u32::from_be(sa.Ipv4.sin_addr.S_un.S_addr)))
-    }
-}
 
 /// Internet address (the only kind worth keeping on the local network).
 /// Internal networks (10/8, 172.16/12, 192.168/16), CGNAT (100.64/10),
@@ -56,109 +42,14 @@ pub fn opcoes_de_exclusao(ips: &[Ipv4Addr]) -> String {
         .join(" ")
 }
 
-/// Windows IPv4 routing table.
-#[cfg(windows)]
-fn tabela_de_rotas() -> Vec<MIB_IPFORWARD_ROW2> {
-    let mut tabela: *mut MIB_IPFORWARD_TABLE2 = std::ptr::null_mut();
-    if unsafe { GetIpForwardTable2(AF_INET, &mut tabela) } != 0 || tabela.is_null() {
-        return Vec::new();
-    }
-    let linhas = unsafe {
-        let n = (*tabela).NumEntries as usize;
-        std::slice::from_raw_parts((*tabela).Table.as_ptr(), n).to_vec()
-    };
-    unsafe { FreeMibTable(tabela as *const _) };
-    linhas
-}
-
 /// Does the VPN whose adapter has the IP `ip_local` carry all internet
 /// traffic? None if the adapter was not found. Only reads the routing table
-/// (no administrator rights needed).
-#[cfg(windows)]
+/// of the system (no administrator rights needed).
 pub fn tunel_completo(ip_local: &str) -> Option<bool> {
+    use crate::platform::routing;
     let ip: Ipv4Addr = ip_local.parse().ok()?;
-    let mut tabela: *mut MIB_UNICASTIPADDRESS_TABLE = std::ptr::null_mut();
-    if unsafe { GetUnicastIpAddressTable(AF_INET, &mut tabela) } != 0 || tabela.is_null() {
-        return None;
-    }
-    let indice = unsafe {
-        let n = (*tabela).NumEntries as usize;
-        let linhas = std::slice::from_raw_parts((*tabela).Table.as_ptr(), n);
-        let achado = linhas
-            .iter()
-            .find(|l| ipv4(&l.Address) == Some(ip))
-            .map(|l| l.InterfaceIndex);
-        FreeMibTable(tabela as *const _);
-        achado
-    }?;
-    let rotas: Vec<(Ipv4Addr, u8, u32)> = tabela_de_rotas()
-        .iter()
-        .filter_map(|r| {
-            Some((ipv4(&r.DestinationPrefix.Prefix)?, r.DestinationPrefix.PrefixLength, r.InterfaceIndex))
-        })
-        .collect();
-    Some(classificar(&rotas, indice))
-}
-
-/// Linux: the same answer from /proc/net/route and the interface addresses.
-#[cfg(target_os = "linux")]
-pub fn tunel_completo(ip_local: &str) -> Option<bool> {
-    let ip: Ipv4Addr = ip_local.parse().ok()?;
-    let interface = interface_do_ip(ip)?;
-    let indice = indice_da_interface(&interface)?;
-    let rotas: Vec<(Ipv4Addr, u8, u32)> = rotas_do_proc(&std::fs::read_to_string("/proc/net/route").ok()?)
-        .into_iter()
-        .filter_map(|(rede, tamanho, nome)| Some((rede, tamanho, indice_da_interface(&nome)?)))
-        .collect();
-    Some(classificar(&rotas, indice))
-}
-
-/// Lines of /proc/net/route -> (network, prefix length, interface). The
-/// addresses are hex numbers in the machine's byte order.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn rotas_do_proc(texto: &str) -> Vec<(Ipv4Addr, u8, String)> {
-    let endereco = |h: &str| u32::from_str_radix(h, 16).ok().map(|v| Ipv4Addr::from(v.to_le_bytes()));
-    texto
-        .lines()
-        .skip(1)
-        .filter_map(|linha| {
-            let campos: Vec<&str> = linha.split_whitespace().collect();
-            let rede = endereco(campos.get(1)?)?;
-            let mascara = endereco(campos.get(7)?)?;
-            Some((rede, u32::from(mascara).count_ones() as u8, campos[0].to_string()))
-        })
-        .collect()
-}
-
-#[cfg(target_os = "linux")]
-fn indice_da_interface(nome: &str) -> Option<u32> {
-    let c = std::ffi::CString::new(nome).ok()?;
-    let i = unsafe { libc::if_nametoindex(c.as_ptr()) };
-    (i != 0).then_some(i)
-}
-
-/// Name of the interface that has the address (getifaddrs).
-#[cfg(target_os = "linux")]
-fn interface_do_ip(ip: Ipv4Addr) -> Option<String> {
-    let mut lista: *mut libc::ifaddrs = std::ptr::null_mut();
-    if unsafe { libc::getifaddrs(&mut lista) } != 0 {
-        return None;
-    }
-    let mut achado = None;
-    let mut atual = lista;
-    while !atual.is_null() {
-        let item = unsafe { &*atual };
-        if !item.ifa_addr.is_null() && i32::from(unsafe { (*item.ifa_addr).sa_family }) == libc::AF_INET {
-            let sin = unsafe { &*(item.ifa_addr as *const libc::sockaddr_in) };
-            if Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr)) == ip {
-                achado = Some(unsafe { std::ffi::CStr::from_ptr(item.ifa_name) }.to_string_lossy().into_owned());
-                break;
-            }
-        }
-        atual = item.ifa_next;
-    }
-    unsafe { libc::freeifaddrs(lista) };
-    achado
+    let indice = routing::interface_do_ip(ip)?;
+    Some(classificar(&routing::rotas(), indice))
 }
 
 /// Full tunnel = the interface has the default route (0.0.0.0/0) or both
@@ -227,20 +118,6 @@ mod tests {
         assert!(!classificar(&[(ip(0, 0, 0, 0), 1, 9)], 9));
         // whole default route through the VPN (redirect-gateway without def1)
         assert!(classificar(&[(ip(0, 0, 0, 0), 0, 9)], 9));
-    }
-
-    #[test]
-    fn le_a_tabela_de_rotas_do_linux() {
-        let texto = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n\
-                     eth0\t00000000\t0100A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n\
-                     tun0\t00000000\t0108000A\t0003\t0\t0\t0\t00000080\t0\t0\t0\n\
-                     tun0\t00000080\t0108000A\t0003\t0\t0\t0\t00000080\t0\t0\t0\n\
-                     tun0\t0000080A\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0\n";
-        let rotas = rotas_do_proc(texto);
-        assert_eq!(rotas[0], (ip(0, 0, 0, 0), 0, "eth0".to_string()));
-        assert_eq!(rotas[1], (ip(0, 0, 0, 0), 1, "tun0".to_string()));
-        assert_eq!(rotas[2], (ip(128, 0, 0, 0), 1, "tun0".to_string()));
-        assert_eq!(rotas[3], (ip(10, 8, 0, 0), 24, "tun0".to_string()));
     }
 
     /// Classifies a really connected VPN (only reads the routing table):

@@ -289,59 +289,15 @@ pub fn resumo(contas: &[(String, String)]) -> (Agregado, Vec<String>) {
     (agregado, linhas)
 }
 
-/// SYSTEMTIME (local time from GetLocalTime).
-#[repr(C)]
-#[derive(Default)]
-struct SystemTimeW {
-    year: u16,
-    month: u16,
-    dow: u16,
-    day: u16,
-    hour: u16,
-    minute: u16,
-    second: u16,
-    ms: u16,
-}
-
-#[cfg(target_os = "linux")]
-fn agora_local() -> SystemTimeW {
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    unsafe {
-        let agora = libc::time(std::ptr::null_mut());
-        libc::localtime_r(&agora, &mut tm);
-    }
-    SystemTimeW {
-        year: (tm.tm_year + 1900) as u16,
-        month: (tm.tm_mon + 1) as u16,
-        dow: tm.tm_wday as u16,
-        day: tm.tm_mday as u16,
-        hour: tm.tm_hour as u16,
-        minute: tm.tm_min as u16,
-        second: tm.tm_sec as u16,
-        ms: 0,
-    }
-}
-
-#[cfg(windows)]
-fn agora_local() -> SystemTimeW {
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn GetLocalTime(t: *mut SystemTimeW);
-    }
-    let mut t = SystemTimeW::default();
-    unsafe { GetLocalTime(&mut t) };
-    t
-}
-
 /// Short HH:MM:SS timestamp.
 pub fn hora_local() -> String {
-    let t = agora_local();
+    let t = crate::platform::locale::agora();
     format!("{:02}:{:02}:{:02}", t.hour, t.minute, t.second)
 }
 
 /// "YYYY-MM-DD HH:MM" (local time).
 pub fn data_e_hora_local() -> String {
-    let t = agora_local();
+    let t = crate::platform::locale::agora();
     format!("{:04}-{:02}-{:02} {:02}:{:02}", t.year, t.month, t.day, t.hour, t.minute)
 }
 

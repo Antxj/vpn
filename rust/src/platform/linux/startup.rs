@@ -10,7 +10,7 @@ pub const ARG_STARTUP: &str = "--startup";
 fn pasta() -> PathBuf {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|| crate::dpapi::pasta_home().join(".config"))
+        .unwrap_or_else(|| super::paths::pasta_home().join(".config"))
         .join("autostart")
 }
 

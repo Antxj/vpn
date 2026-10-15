@@ -693,6 +693,45 @@ fn helper(args: &[String]) -> Result<i32, String> {
     Ok(status?.code().unwrap_or(1))
 }
 
+/// Linux: OpenVPN creates its tun device by itself; nothing to create.
+pub fn criar_adaptador(_openvpn: &Path, _hwid: &str) -> Result<(), String> {
+    Err("tun".into())
+}
+
+/// Explanation of the one-time authorization (asked before running it).
+pub fn pergunta_de_autorizacao() -> String {
+    let grupo = grupo_autorizado();
+    trf!(
+        "Para conectar sem pedir a senha de administrador a cada vez, esta \
+         conta do Linux precisa ser autorizada uma única vez (o app instala \
+         um ajudante do OpenVPN e inclui a conta no grupo \"{grupo}\").\n\n\
+         O sistema vai pedir a senha de um administrador agora. Continuar?",
+        "To connect without asking for the administrator password every time, \
+         this Linux account needs to be authorized once (the app installs an \
+         OpenVPN helper and adds the account to the \"{grupo}\" group).\n\n\
+         The system will ask for an administrator's password now. Continue?"
+    )
+}
+
+/// The app run as a helper: the root helper started by pkexec, its version
+/// check, or the one-time authorization (after the polkit password). Does
+/// that job and exits.
+pub fn tratar_argumentos_especiais() {
+    let args: Vec<String> = std::env::args().collect();
+    match args.get(1).map(String::as_str) {
+        Some(ARG_HELPER) => std::process::exit(executar_helper(&args[2..])),
+        Some(ARG_VERSAO_DO_AJUDANTE) => {
+            println!("{VERSAO_DO_AJUDANTE}");
+            std::process::exit(0);
+        }
+        _ => {}
+    }
+    if let Some(i) = args.iter().position(|a| a == ARG_AUTHORIZE) {
+        let usuario = args.get(i + 1).cloned().unwrap_or_default();
+        std::process::exit(adicionar_ao_grupo(&usuario));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

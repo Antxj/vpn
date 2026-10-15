@@ -3,7 +3,7 @@
 //! works with the window hidden, when the egui loop does not run).
 
 use crate::accounts::Conta;
-use crate::dpapi::{self, Settings};
+use crate::settings::{self, Settings};
 use crate::state::{self, Situacao};
 use crate::vpn;
 use std::collections::HashMap;
@@ -44,7 +44,7 @@ static MOTOR: OnceLock<Motor> = OnceLock::new();
 /// The process engine (loads the saved accounts on the first call).
 pub fn get() -> &'static Motor {
     MOTOR.get_or_init(|| Motor {
-        settings: Mutex::new(dpapi::load_settings()),
+        settings: Mutex::new(settings::load_settings()),
         conexoes: Mutex::new(HashMap::new()),
     })
 }
@@ -77,11 +77,10 @@ impl Motor {
             .collect()
     }
 
-    /// Linux: reads the saved accounts again (keyring unlocked after the app
+    /// Reads the saved accounts again (keyring unlocked after the app
     /// started). True when it worked.
-    #[cfg(target_os = "linux")]
     pub fn ler_contas_de_novo(&self) -> bool {
-        match dpapi::tentar_ler_de_novo() {
+        match settings::tentar_ler_de_novo() {
             Some(s) => {
                 *self.settings.lock().unwrap() = s;
                 true
@@ -103,7 +102,7 @@ impl Motor {
             }
             None => s.contas.push(conta),
         }
-        dpapi::save_settings(&s);
+        settings::save_settings(&s);
     }
 
     /// Stores the tunnel type observed on connect (saves only if it changed).
@@ -116,7 +115,7 @@ impl Motor {
             return false;
         }
         c.tunel_completo = Some(completo);
-        dpapi::save_settings(&s);
+        settings::save_settings(&s);
         true
     }
 
@@ -129,7 +128,7 @@ impl Motor {
     pub fn salvar_idioma(&self, idioma: Option<crate::i18n::Idioma>) {
         let mut s = self.settings.lock().unwrap();
         s.idioma = idioma.map(|i| i.codigo().to_string());
-        dpapi::save_settings(&s);
+        settings::save_settings(&s);
         drop(s);
         crate::i18n::aplicar(idioma);
     }
@@ -138,7 +137,7 @@ impl Motor {
         self.desconectar(id);
         let mut s = self.settings.lock().unwrap();
         s.contas.retain(|c| c.id != id);
-        dpapi::save_settings(&s);
+        settings::save_settings(&s);
         drop(s);
         state::remover(id);
     }
@@ -150,7 +149,7 @@ impl Motor {
     pub fn salvar_tema(&self, escuro: bool) {
         let mut s = self.settings.lock().unwrap();
         s.theme = Some(if escuro { "dark" } else { "light" }.into());
-        dpapi::save_settings(&s);
+        settings::save_settings(&s);
     }
 
     /// Turns "connect when the app opens" on or off for an account.
@@ -158,7 +157,7 @@ impl Motor {
         let mut s = self.settings.lock().unwrap();
         if let Some(c) = s.contas.iter_mut().find(|c| c.id == id) {
             c.conectar_ao_abrir = ligado;
-            dpapi::save_settings(&s);
+            settings::save_settings(&s);
         }
     }
 
@@ -170,7 +169,7 @@ impl Motor {
     pub fn salvar_iniciar_minimizado(&self, ligado: bool) {
         let mut s = self.settings.lock().unwrap();
         s.iniciar_minimizado = if ligado { None } else { Some(false) };
-        dpapi::save_settings(&s);
+        settings::save_settings(&s);
     }
 
     /// Check for new versions automatically (default: yes).
@@ -181,7 +180,7 @@ impl Motor {
     pub fn salvar_verifica_atualizacoes(&self, ligado: bool) {
         let mut s = self.settings.lock().unwrap();
         s.atualizacoes = if ligado { None } else { Some(false) };
-        dpapi::save_settings(&s);
+        settings::save_settings(&s);
     }
 
     /// Notify when a connection drops and comes back (default: yes).
@@ -192,7 +191,7 @@ impl Motor {
     pub fn salvar_avisos_de_queda(&self, ligado: bool) {
         let mut s = self.settings.lock().unwrap();
         s.avisos_de_queda = if ligado { None } else { Some(false) };
-        dpapi::save_settings(&s);
+        settings::save_settings(&s);
     }
 
     // ------------------------------------------------------- connections --

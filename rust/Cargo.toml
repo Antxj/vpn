@@ -30,7 +30,7 @@ getrandom = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 eframe = { version = "0.29", default-features = false, features = ["wgpu"] }
-# native dialogs (on Linux they come from GTK directly: see src/dialogo.rs)
+# native dialogs (on Linux they come from GTK directly: see src/platform/linux/dialogs.rs)
 rfd = "0.17"
 # eframe 0.29 does not enable WGPU's native DirectX 12 backend by itself.
 wgpu = { version = "22.1", default-features = false, features = ["dx12"] }
@@ -38,7 +38,7 @@ windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shel
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
-# the tray icon needs a GTK main loop of its own (see src/linux/desktop.rs)
+# the tray icon needs a GTK main loop of its own (see src/platform/linux/desktop.rs)
 gtk = "0.18"
 notify-rust = "4"
 # key of the saved accounts, kept in the desktop keyring (Secret Service)

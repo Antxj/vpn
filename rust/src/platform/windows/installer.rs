@@ -29,7 +29,7 @@ pub fn is_available() -> bool {
 }
 
 fn log_path() -> PathBuf {
-    crate::dpapi::app_dir().join("openvpn-install.log")
+    crate::settings::app_dir().join("openvpn-install.log")
 }
 
 /// Installs OpenVPN in the background. Windows asks for administrator
@@ -56,7 +56,7 @@ fn install() -> Result<bool, String> {
         .map_err(|e| trf!("Não consegui gravar o instalador em disco: {e}", "Could not write the installer to disk: {e}"))?;
 
     let log = log_path();
-    let _ = std::fs::create_dir_all(crate::dpapi::app_dir());
+    let _ = std::fs::create_dir_all(crate::settings::app_dir());
 
     // the app runs as a regular user: Windows asks for administrator
     // permission (UAC) for the installation only
@@ -65,10 +65,10 @@ fn install() -> Result<bool, String> {
         .join("msiexec.exe");
     let params = format!(
         "/i {} /qn /norestart {FEATURES} /l*v {}",
-        crate::service::argumento(&msi_path.to_string_lossy()),
-        crate::service::argumento(&log.to_string_lossy())
+        super::service::argumento(&msi_path.to_string_lossy()),
+        super::service::argumento(&log.to_string_lossy())
     );
-    let resultado = crate::elevate::executar_como_admin(&msiexec, &params);
+    let resultado = super::elevate::executar_como_admin(&msiexec, &params);
 
     let _ = std::fs::remove_file(&msi_path);
 

@@ -229,38 +229,43 @@ Linux: Rust, `pkg-config` and the GTK 3 development files
 (`sudo apt install build-essential pkg-config libgtk-3-dev`), then
 `bash rust/build-release-linux.sh` (tests, build without machine paths, checks).
 
-Structure (what talks to the operating system has one module per system,
-with the same interface: `src/<module>.rs` for Windows, `src/linux/` for Linux):
+Structure: the code shared by every system is in `rust/src/`; everything
+that talks to the operating system is in
+[`rust/src/platform/`](rust/src/platform/mod.rs), with one folder per system
+(`windows/`, `linux/`) holding the **same modules with the same interface** —
+the rest of the app does not know which system it runs on. A new system
+(e.g. macOS) is a new folder with the same modules.
 
-- [`main.rs`](rust/src/main.rs) — user interface (egui) and tray
-- [`windows/desktop.rs`](rust/src/windows/desktop.rs),
-  [`linux/desktop.rs`](rust/src/linux/desktop.rs) — window, tray icon and
-  notifications of each system; [`dialogo.rs`](rust/src/dialogo.rs) — native dialogs
-- [`renderer.rs`](rust/src/renderer.rs) — OpenGL or DirectX 12 for the window
-- [`engine.rs`](rust/src/engine.rs) — accounts and active connections (used by
-  the interface and by the tray menu)
-- [`vpn.rs`](rust/src/vpn.rs) — one connection: `openvpn.exe` started
-  through the service, management interface and on-demand adapter creation
-- [`service.rs`](rust/src/service.rs) — client of the OpenVPN interactive
-  service (named pipe protocol) and user authorization;
-  [`linux/service.rs`](rust/src/linux/service.rs) — the pkexec/polkit helper
-  that starts OpenVPN as root on Linux
-- [`elevate.rs`](rust/src/elevate.rs) — administrator rights on demand (UAC)
-- [`startup.rs`](rust/src/startup.rs) — "Start with Windows" (user Run key)
-- [`state.rs`](rust/src/state.rs) — shared per-account state and log;
-  written by the connections, read by the interface and the tray
-- [`accounts.rs`](rust/src/accounts.rs) — account model, authentication and
-  validation
-- [`dpapi.rs`](rust/src/dpapi.rs) — encryption and persistence
-  ([`linux/segredo.rs`](rust/src/linux/segredo.rs): key in the desktop keyring)
-- [`routes.rs`](rust/src/routes.rs) — routes that keep other VPNs outside a
-  full tunnel, and tunnel type detection (Windows IP Helper)
-- [`i18n.rs`](rust/src/i18n.rs) — language (Portuguese/English) and the
-  `tr!`/`trf!` text macros
-- [`update.rs`](rust/src/update.rs) — checking for and installing
-  new versions (WinHTTP, SHA-256 via BCrypt and signature via WinVerifyTrust)
-- [`totp.rs`](rust/src/totp.rs) (RFC 6238), [`qr.rs`](rust/src/qr.rs),
-  [`installer.rs`](rust/src/installer.rs), [`single.rs`](rust/src/single.rs)
+```
+rust/src/
+  main.rs        user interface (egui) and tray menu
+  engine.rs      accounts and active connections
+  vpn.rs         one connection: OpenVPN, management interface, drops
+  state.rs       per-account state and log
+  accounts.rs    account model, authentication, validation
+  settings.rs    saved settings and accounts (contas.dat)
+  backup.rs      password-protected account backup
+  update.rs      checking for and installing new versions
+  routes.rs      full/split tunnel, routes that keep other VPNs outside
+  dialogs.rs     native dialogs (messages, questions, files)
+  i18n.rs        Portuguese/English and the tr!/trf! text macros
+  support.rs     "Copy" of the log, without secrets
+  totp.rs        TOTP (RFC 6238)    qr.rs  QR code import
+  platform/
+    mod.rs       the interface every system implements
+    windows/     Win32: DPAPI, OpenVPN interactive service, UAC, registry,
+                 WinHTTP/WinVerifyTrust, DirectX 12 fallback, embedded MSI
+    linux/       GTK tray and dialogs, keyring, pkexec/polkit helper,
+                 /proc/net/route, XDG autostart, ureq
+```
+
+Modules in each `platform/<system>/`: `desktop` (window, tray icon,
+notifications), `dialogs`, `installer`, `locale` (system language and local
+time), `openvpn` (where OpenVPN and the configs are), `paths` (data folder),
+`renderer`, `routing` (routing table), `secret` (protection of the accounts),
+`service` (starting OpenVPN without administrator rights), `single` (single
+instance), `startup` (start with the system) and `updater` (download and
+checks of a new version); Windows also has `elevate` (UAC).
 
 Useful variables for development and testing:
 

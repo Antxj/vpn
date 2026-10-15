@@ -78,70 +78,14 @@ pub fn aplicar(escolha: Option<Idioma>) {
     PORTUGUES.store(idioma == Idioma::Portugues, Ordering::Relaxed);
 }
 
-/// Interface language of the system.
-#[cfg(windows)]
+/// Interface language of the system (Windows UI language, Linux locale).
 pub fn do_sistema() -> Idioma {
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn GetUserDefaultUILanguage() -> u16;
-    }
-    pelo_langid(unsafe { GetUserDefaultUILanguage() })
-}
-
-/// Linux: the locale of the session (LC_ALL, LC_MESSAGES or LANG).
-#[cfg(target_os = "linux")]
-pub fn do_sistema() -> Idioma {
-    let locale = ["LC_ALL", "LC_MESSAGES", "LANG"]
-        .iter()
-        .filter_map(|v| std::env::var(v).ok())
-        .find(|v| !v.is_empty())
-        .unwrap_or_default();
-    pelo_locale(&locale)
-}
-
-/// "pt_BR.UTF-8", "pt_PT" -> Portuguese; anything else -> English.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn pelo_locale(locale: &str) -> Idioma {
-    if locale.to_ascii_lowercase().starts_with("pt") {
-        Idioma::Portugues
-    } else {
-        Idioma::Ingles
-    }
-}
-
-/// Windows LANGID -> app language: Portuguese (Brazil or Portugal)
-/// uses pt-BR; all others, English.
-#[cfg_attr(not(windows), allow(dead_code))]
-fn pelo_langid(langid: u16) -> Idioma {
-    const LANG_PORTUGUESE: u16 = 0x16;
-    if langid & 0x3FF == LANG_PORTUGUESE {
-        Idioma::Portugues
-    } else {
-        Idioma::Ingles
-    }
+    crate::platform::locale::idioma()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn idioma_pelo_windows() {
-        assert_eq!(pelo_langid(0x0416), Idioma::Portugues); // pt-BR
-        assert_eq!(pelo_langid(0x0816), Idioma::Portugues); // pt-PT
-        assert_eq!(pelo_langid(0x0409), Idioma::Ingles); // en-US
-        assert_eq!(pelo_langid(0x0C0A), Idioma::Ingles); // es-ES
-        assert_eq!(pelo_langid(0x0407), Idioma::Ingles); // de-DE
-    }
-
-    #[test]
-    fn idioma_pelo_locale_do_linux() {
-        assert_eq!(pelo_locale("pt_BR.UTF-8"), Idioma::Portugues);
-        assert_eq!(pelo_locale("pt_PT"), Idioma::Portugues);
-        assert_eq!(pelo_locale("en_US.UTF-8"), Idioma::Ingles);
-        assert_eq!(pelo_locale("C.UTF-8"), Idioma::Ingles);
-        assert_eq!(pelo_locale(""), Idioma::Ingles);
-    }
 
     #[test]
     fn codigos() {

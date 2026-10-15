@@ -8,8 +8,7 @@ mod i18n;
 mod update;
 mod accounts;
 mod backup;
-mod dialogo;
-mod dpapi;
+mod settings;
 mod state;
 mod engine;
 mod qr;
@@ -17,45 +16,11 @@ mod routes;
 mod support;
 mod totp;
 mod vpn;
+mod dialogs;
+// what talks to the operating system: platform/windows or platform/linux
+mod platform;
 
-// what talks to the operating system: one module per system, same interface
-#[cfg(windows)]
-mod elevate;
-#[cfg(windows)]
-mod installer;
-#[cfg(target_os = "linux")]
-#[path = "linux/installer.rs"]
-mod installer;
-#[cfg(windows)]
-mod renderer;
-#[cfg(target_os = "linux")]
-#[path = "linux/renderer.rs"]
-mod renderer;
-#[cfg(target_os = "linux")]
-#[path = "linux/segredo.rs"]
-mod segredo;
-#[cfg(windows)]
-mod service;
-#[cfg(target_os = "linux")]
-#[path = "linux/service.rs"]
-mod service;
-#[cfg(windows)]
-mod single;
-#[cfg(target_os = "linux")]
-#[path = "linux/single.rs"]
-mod single;
-#[cfg(windows)]
-mod startup;
-#[cfg(target_os = "linux")]
-#[path = "linux/startup.rs"]
-mod startup;
-
-#[cfg(windows)]
-#[path = "windows/desktop.rs"]
-mod desktop;
-#[cfg(target_os = "linux")]
-#[path = "linux/desktop.rs"]
-mod desktop;
+use platform::{desktop, installer, renderer, service, single, startup};
 pub(crate) use desktop::show_main_window;
 
 use accounts::{Autenticacao, Conta};
@@ -75,11 +40,6 @@ use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIc
 
 const APP_TITLE: &str = "VPN";
 const WINDOW_TITLE: &str = concat!("VPN v", env!("CARGO_PKG_VERSION"));
-#[cfg(windows)]
-const OPENVPN_DOWNLOAD_URL: &str = "https://openvpn.net/community-downloads/";
-/// Linux: how to install OpenVPN with the distribution's package manager.
-#[cfg(target_os = "linux")]
-const OPENVPN_DOWNLOAD_URL: &str = "https://github.com/Antxj/vpn#linux";
 
 const ACCENT: egui::Color32 = egui::Color32::from_rgb(0x3b, 0x82, 0xf6);
 /// Window size (fixed: the window is not resizable).
@@ -97,55 +57,7 @@ static APOS_ATUALIZAR: AtomicBool = AtomicBool::new(false);
 /// Accounts that were on before the update (turned back on at start).
 static RECONECTAR: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
 
-#[cfg(windows)]
-const OPENVPN_CANDIDATES: &[&str] = &[
-    r"C:\Program Files\OpenVPN\bin\openvpn.exe",
-    r"C:\Program Files (x86)\OpenVPN\bin\openvpn.exe",
-];
-#[cfg(target_os = "linux")]
-const OPENVPN_CANDIDATES: &[&str] = &["/usr/sbin/openvpn", "/usr/bin/openvpn", "/usr/local/sbin/openvpn"];
-/// Key written by the OpenVPN installer (finds installations outside the
-/// default path, e.g. on another drive).
-#[cfg(windows)]
-const OPENVPN_REG_KEY: &str = r"SOFTWARE\OpenVPN";
-
 // ------------------------------------------------------------- utilities ---
-
-/// Reads HKLM\SOFTWARE\OpenVPN\exe_path (written by the official installer).
-#[cfg(windows)]
-fn openvpn_from_registry() -> Option<PathBuf> {
-    use windows_sys::Win32::System::Registry::{
-        RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RRF_SUBKEY_WOW6432KEY,
-        RRF_SUBKEY_WOW6464KEY,
-    };
-
-    let key = single::wide(OPENVPN_REG_KEY);
-    let value = single::wide("exe_path");
-    // tries the 64-bit and the 32-bit registry views
-    for view in [RRF_SUBKEY_WOW6464KEY, RRF_SUBKEY_WOW6432KEY] {
-        let mut buf = [0u16; 512];
-        let mut len = (buf.len() * 2) as u32;
-        let ok = unsafe {
-            RegGetValueW(
-                HKEY_LOCAL_MACHINE,
-                key.as_ptr(),
-                value.as_ptr(),
-                RRF_RT_REG_SZ | view,
-                std::ptr::null_mut(),
-                buf.as_mut_ptr() as *mut std::ffi::c_void,
-                &mut len,
-            )
-        };
-        if ok == 0 {
-            let chars = (len as usize / 2).saturating_sub(1).min(buf.len());
-            let path = PathBuf::from(String::from_utf16_lossy(&buf[..chars]));
-            if path.exists() {
-                return Some(path);
-            }
-        }
-    }
-    None
-}
 
 fn find_openvpn() -> Option<PathBuf> {
     // VPN_OPENVPN points to an openvpn.exe outside the default path (and,
@@ -154,29 +66,11 @@ fn find_openvpn() -> Option<PathBuf> {
         let p = PathBuf::from(custom);
         return if p.exists() { Some(p) } else { None };
     }
-    let achado = OPENVPN_CANDIDATES.iter().map(PathBuf::from).find(|p| p.exists());
-    #[cfg(windows)]
-    let achado = achado.or_else(openvpn_from_registry);
-    achado
-}
-
-#[cfg(target_os = "linux")]
-fn config_dirs() -> Vec<PathBuf> {
-    vec![dpapi::pasta_home(), PathBuf::from("/etc/openvpn/client")]
-}
-
-#[cfg(windows)]
-fn config_dirs() -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    if let Ok(profile) = std::env::var("USERPROFILE") {
-        dirs.push(PathBuf::from(profile).join("OpenVPN").join("config"));
-    }
-    dirs.push(PathBuf::from(r"C:\Program Files\OpenVPN\config"));
-    dirs
+    platform::openvpn::encontrar()
 }
 
 fn find_default_config() -> Option<PathBuf> {
-    for dir in config_dirs() {
+    for dir in platform::openvpn::pastas_de_config() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
         };
@@ -210,7 +104,7 @@ fn label_color(dark: bool) -> egui::Color32 {
 }
 
 fn error_box(msg: &str) {
-    dialogo::mensagem(msg, dialogo::Nivel::Erro);
+    dialogs::mensagem(msg, dialogs::Nivel::Erro);
 }
 
 fn report_startup_error(error: &eframe::Error) {
@@ -223,7 +117,7 @@ fn report_startup_error(error: &eframe::Error) {
 
 /// Appends the error to startup-error.log; returns where (or why not), for the user.
 fn registrar_erro_de_inicio(error: &eframe::Error) -> String {
-    let app_dir = dpapi::app_dir();
+    let app_dir = settings::app_dir();
     let log_path = app_dir.join("startup-error.log");
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -485,7 +379,7 @@ fn alternar_conta(id: &str) -> Result<(), ErroConexao> {
     let conflitos = m.conflitos_de_rota(id);
     if !conflitos.is_empty() {
         let nome = m.conta(id).map(|c| c.nome_exibicao().to_string()).unwrap_or_default();
-        let sim = dialogo::sim_nao(
+        let sim = dialogs::sim_nao(
             &trf!(
                 "\"{nome}\" e \"{}\" mandam todo o tráfego da internet pela VPN.\n\n\
                  Com as duas conectadas, só a última funciona como rota padrão \
@@ -495,7 +389,7 @@ fn alternar_conta(id: &str) -> Result<(), ErroConexao> {
                  (the other one keeps reaching only its own network). Connect anyway?",
                 conflitos.join("\", \"")
             ),
-            dialogo::Nivel::Aviso,
+            dialogs::Nivel::Aviso,
         );
         if !sim {
             return Ok(());
@@ -694,8 +588,8 @@ fn aba(ui: &mut egui::Ui, texto: &str, ativa: bool, cor: Option<egui::Color32>, 
 }
 
 /// File filter of the account backup.
-fn filtro_backup() -> dialogo::Filtro<'static> {
-    dialogo::Filtro {
+fn filtro_backup() -> dialogs::Filtro<'static> {
+    dialogs::Filtro {
         nome: tr!("Backup do VPN", "VPN backup"),
         extensoes: &["vpnbackup"],
     }
@@ -724,7 +618,7 @@ fn executar_backup(jb: &mut JanelaBackup, m: &engine::Motor) -> Result<(), Strin
             return Err(tr!("As duas senhas não são iguais.", "The two passwords do not match.").into());
         }
         let data = state::data_e_hora_local();
-        let Some(destino) = dialogo::salvar_arquivo(
+        let Some(destino) = dialogs::salvar_arquivo(
             tr!("Salvar o backup das contas", "Save the account backup"),
             filtro_backup(),
             &format!("VPN-{}.vpnbackup", &data[..10]),
@@ -751,7 +645,7 @@ fn executar_backup(jb: &mut JanelaBackup, m: &engine::Motor) -> Result<(), Strin
         }
         jb.concluido = Some(msg);
     } else if let Some(contas) = jb.contas.take() {
-        let prontas = match backup::instalar(&contas, &dpapi::app_dir().join("configs")) {
+        let prontas = match backup::instalar(&contas, &settings::app_dir().join("configs")) {
             Ok(p) => p,
             Err(e) => {
                 jb.contas = Some(contas);
@@ -1107,11 +1001,11 @@ impl App {
                 false,
             )
         };
-        if dialogo::sim_nao(&pergunta, dialogo::Nivel::Aviso) {
+        if dialogs::sim_nao(&pergunta, dialogs::Nivel::Aviso) {
             if instala {
                 self.start_openvpn_install();
             } else {
-                let _ = open::that(OPENVPN_DOWNLOAD_URL);
+                let _ = open::that(platform::openvpn::PAGINA_DE_DOWNLOAD);
             }
         }
     }
@@ -1209,9 +1103,9 @@ impl App {
     }
 
     fn qr_from_file(&mut self) {
-        let Some(path) = dialogo::abrir_arquivo(
+        let Some(path) = dialogs::abrir_arquivo(
             tr!("Escolha a imagem do QR Code", "Choose the QR code image"),
-            dialogo::Filtro {
+            dialogs::Filtro {
                 nome: tr!("Imagens", "Images"),
                 extensoes: &["png", "jpg", "jpeg", "bmp", "gif", "webp"],
             },
@@ -1240,14 +1134,14 @@ impl App {
         match img {
             Some(img) => self.import_qr_image(img),
             None => {
-                dialogo::mensagem(
+                dialogs::mensagem(
                     tr!(
                         "Não há imagem na área de transferência.\n\
                          Copie a imagem do QR Code e tente de novo.",
                         "There is no image on the clipboard.\n\
                          Copy the QR code image and try again."
                     ),
-                    dialogo::Nivel::Info,
+                    dialogs::Nivel::Info,
                 );
             }
         }
@@ -1282,9 +1176,8 @@ impl App {
             ui.add_space(8.0);
         };
 
-        // Linux: contas.dat exists but the keyring did not give its key
-        #[cfg(target_os = "linux")]
-        if dpapi::contas_ilegiveis() {
+        // contas.dat exists but the secret store (Linux keyring) is locked
+        if settings::contas_ilegiveis() {
             let mut de_novo = false;
             faixa(
                 ui,
@@ -1335,7 +1228,7 @@ impl App {
                         if embutido {
                             instalar = true;
                         } else {
-                            let _ = open::that(OPENVPN_DOWNLOAD_URL);
+                            let _ = open::that(platform::openvpn::PAGINA_DE_DOWNLOAD);
                         }
                     }
                 }
@@ -1753,7 +1646,7 @@ impl App {
             )
             .fill(ACCENT);
             // saved accounts unreadable (Linux keyring): nothing could be saved
-            if ui.add_enabled(!dpapi::contas_ilegiveis(), nova).clicked() {
+            if ui.add_enabled(!settings::contas_ilegiveis(), nova).clicked() {
                 let mut c = Conta::nova();
                 c.config = find_default_config()
                     .map(|p| p.to_string_lossy().into_owned())
@@ -1767,13 +1660,13 @@ impl App {
             self.abrir_editor(c, false);
         }
         if let Some(c) = remover {
-            let sim = dialogo::sim_nao(
+            let sim = dialogs::sim_nao(
                 &trf!(
                     "Remover a conta \"{}\"?\n\nUsuário, seed e senha salvos dela serão apagados.",
                     "Remove the account \"{}\"?\n\nIts saved username, seed and password will be deleted.",
                     c.nome_exibicao()
                 ),
-                dialogo::Nivel::Aviso,
+                dialogs::Nivel::Aviso,
             );
             if sim {
                 m.remover_conta(&c.id);
@@ -2020,7 +1913,7 @@ impl App {
                             self.backup = Some(JanelaBackup::nova(true, PathBuf::new()));
                         }
                         if ui.button(tr!("Importar...", "Import...")).clicked() {
-                            if let Some(p) = dialogo::abrir_arquivo(
+                            if let Some(p) = dialogs::abrir_arquivo(
                                 tr!("Escolha o backup das contas", "Choose the account backup"),
                                 filtro_backup(),
                                 None,
@@ -2320,10 +2213,10 @@ impl App {
                             .parent()
                             .map(PathBuf::from)
                             .filter(|p| p.is_dir())
-                            .or_else(|| config_dirs().into_iter().find(|d| d.is_dir()));
-                        let escolhido = dialogo::abrir_arquivo(
+                            .or_else(|| platform::openvpn::pastas_de_config().into_iter().find(|d| d.is_dir()));
+                        let escolhido = dialogs::abrir_arquivo(
                             tr!("Escolha o arquivo .ovpn", "Choose the .ovpn file"),
-                            dialogo::Filtro {
+                            dialogs::Filtro {
                                 nome: tr!("Config OpenVPN", "OpenVPN config"),
                                 extensoes: &["ovpn"],
                             },
@@ -2659,23 +2552,9 @@ impl eframe::App for App {
 }
 
 fn main() -> eframe::Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    // Linux: the helper that starts openvpn as root (run through pkexec)
-    #[cfg(target_os = "linux")]
-    match args.get(1).map(String::as_str) {
-        Some(service::ARG_HELPER) => std::process::exit(service::executar_helper(&args[2..])),
-        Some(service::ARG_VERSAO_DO_AJUDANTE) => {
-            println!("{}", service::VERSAO_DO_AJUDANTE);
-            std::process::exit(0);
-        }
-        _ => {}
-    }
-    // elevated helper (started by service::autorizar_usuario_atual, after the
-    // UAC prompt or the polkit password): authorizes the user and exits
-    if let Some(i) = args.iter().position(|a| a == service::ARG_AUTHORIZE) {
-        let usuario = args.get(i + 1).cloned().unwrap_or_default();
-        std::process::exit(service::adicionar_ao_grupo(&usuario));
-    }
+    // the app run as a helper (user authorization, Linux root helper):
+    // does that job and exits
+    service::tratar_argumentos_especiais();
 
     // after "Update now", the previous version opens this one passing its own
     // PID and the accounts that were on
@@ -2753,26 +2632,7 @@ fn main() -> eframe::Result<()> {
         .with_icon(std::sync::Arc::new(icon))
         .with_title(WINDOW_TITLE)
         .with_app_id("vpn");
-    // Linux: started minimized, the window is created hidden (on Windows,
-    // eframe ignores this and the window is cloaked instead)
-    #[cfg(target_os = "linux")]
-    let viewport = viewport.with_visible(!oculto);
-    let options = eframe::NativeOptions {
-        viewport,
-        // OpenGL where the video driver offers it; DirectX 12 in remote desktop
-        // sessions, VMs and PCs with only Windows' software OpenGL 1.1, where
-        // OpenGL cannot open the window (see renderer.rs)
-        renderer: desenho.eframe(),
-        #[cfg(windows)]
-        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
-            supported_backends: eframe::wgpu::Backends::DX12,
-            // static interface: no reason to wake up the dedicated GPU
-            // (saves battery and memory on hybrid laptops)
-            power_preference: eframe::wgpu::PowerPreference::LowPower,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
+    let options = renderer::opcoes(desenho, viewport, oculto);
 
     if desenho == renderer::Desenho::OpenGl {
         renderer::vigiar_inicio_opengl();
