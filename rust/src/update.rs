@@ -18,8 +18,8 @@
 //! (Windows: WinHTTP, BCrypt, WinVerifyTrust; Linux: ureq and sha2 - the
 //! Linux build is not signed, so only the SHA-256 check applies).
 
-use crate::platform::updater::{assinante, http_get, sha256_hex, tornar_executavel, CABECALHO};
 pub use crate::platform::updater::{aguardar_processo, ARQUIVO};
+use crate::platform::updater::{assinante, http_get, sha256_hex, tornar_executavel, CABECALHO};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -70,8 +70,10 @@ pub enum Estado {
 }
 
 static ESTADO: Mutex<Estado> = Mutex::new(Estado::Nada);
+type AoAcharVersao = Box<dyn Fn(&str) + Send + Sync>;
+
 static AVISO: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
-static NOVA_VERSAO: OnceLock<Box<dyn Fn(&str) + Send + Sync>> = OnceLock::new();
+static NOVA_VERSAO: OnceLock<AoAcharVersao> = OnceLock::new();
 /// Last version announced by `ao_achar_versao` (each one only once).
 static ANUNCIADA: Mutex<Option<String>> = Mutex::new(None);
 
@@ -186,10 +188,11 @@ fn verificar(manual: bool) {
 fn consultar(url: &str, atual: &str) -> Result<Option<Versao>, String> {
     let corpo = http_get(url, LIMITE_JSON, &mut |_| {}).map_err(|e| match e {
         // private/non-existent repository or no published release
-        ErroHttp::Status(404) => {
-            tr!("Nenhuma versão publicada foi encontrada.", "No published version was found.")
-                .to_string()
-        }
+        ErroHttp::Status(404) => tr!(
+            "Nenhuma versão publicada foi encontrada.",
+            "No published version was found."
+        )
+        .to_string(),
         outro => outro.mensagem(),
     })?;
     interpretar(&corpo, atual)
@@ -197,7 +200,13 @@ fn consultar(url: &str, atual: &str) -> Result<Option<Versao>, String> {
 
 /// Reads the `releases/latest` response; Some if newer than `atual`.
 fn interpretar(corpo: &[u8], atual: &str) -> Result<Option<Versao>, String> {
-    let inesperada = || tr!("Resposta inesperada do GitHub.", "Unexpected response from GitHub.").to_string();
+    let inesperada = || {
+        tr!(
+            "Resposta inesperada do GitHub.",
+            "Unexpected response from GitHub."
+        )
+        .to_string()
+    };
     let v: serde_json::Value = serde_json::from_slice(corpo).map_err(|_| inesperada())?;
     if v["draft"].as_bool() == Some(true) || v["prerelease"].as_bool() == Some(true) {
         return Ok(None);
@@ -226,7 +235,10 @@ fn interpretar(corpo: &[u8], atual: &str) -> Result<Option<Versao>, String> {
         sha256: None,
     };
     if let Some(a) = anexo {
-        versao.download = a["browser_download_url"].as_str().unwrap_or_default().into();
+        versao.download = a["browser_download_url"]
+            .as_str()
+            .unwrap_or_default()
+            .into();
         versao.tamanho = a["size"].as_u64().unwrap_or(0);
         versao.sha256 = a["digest"]
             .as_str()
@@ -252,7 +264,10 @@ fn versao_maior(nova: &str, atual: &str) -> bool {
         }
         (n > 0).then_some(out)
     }
-    match (partes(nova), partes(atual.split(['-', '+']).next().unwrap_or(atual))) {
+    match (
+        partes(nova),
+        partes(atual.split(['-', '+']).next().unwrap_or(atual)),
+    ) {
         (Some(a), Some(b)) => a > b,
         _ => false,
     }
@@ -272,7 +287,10 @@ pub fn instalar(v: Versao) {
             Err(e) => {
                 definir(Estado::FalhaInstalacao(
                     v,
-                    trf!("Não encontrei o executável atual: {e}", "Could not find the current executable: {e}"),
+                    trf!(
+                        "Não encontrei o executável atual: {e}",
+                        "Could not find the current executable: {e}"
+                    ),
                 ));
                 return;
             }
@@ -316,11 +334,7 @@ fn vizinho(alvo: &Path, sufixo: &str) -> PathBuf {
     alvo.with_file_name(format!("{nome}.{sufixo}"))
 }
 
-fn baixar_e_trocar(
-    v: &Versao,
-    alvo: &Path,
-    progresso: &mut dyn FnMut(f32),
-) -> Result<(), String> {
+fn baixar_e_trocar(v: &Versao, alvo: &Path, progresso: &mut dyn FnMut(f32)) -> Result<(), String> {
     if v.download.is_empty() {
         return Err(trf!(
             "A versão {} não tem o {ARQUIVO} anexado.",
@@ -371,13 +385,12 @@ fn baixar_e_trocar(
 
     let novo = vizinho(alvo, "novo");
     let antigo = vizinho(alvo, "antigo");
-    std::fs::write(&novo, &dados)
-        .map_err(|e| {
-            trf!(
-                "Não consegui gravar a versão nova na pasta do aplicativo: {e}",
-                "Could not write the new version to the app folder: {e}"
-            )
-        })?;
+    std::fs::write(&novo, &dados).map_err(|e| {
+        trf!(
+            "Não consegui gravar a versão nova na pasta do aplicativo: {e}",
+            "Could not write the new version to the app folder: {e}"
+        )
+    })?;
     tornar_executavel(&novo);
 
     // from the first signed version on, only the same publisher is accepted
@@ -397,7 +410,10 @@ fn baixar_e_trocar(
     // current one becomes .antigo, deleted on the next start
     let _ = std::fs::remove_file(&antigo);
     let falha = |e: std::io::Error| {
-        trf!("Não consegui substituir o aplicativo: {e}", "Could not replace the app: {e}")
+        trf!(
+            "Não consegui substituir o aplicativo: {e}",
+            "Could not replace the app: {e}"
+        )
     };
     if let Err(e) = std::fs::rename(alvo, &antigo) {
         let _ = std::fs::remove_file(&novo);
@@ -422,7 +438,8 @@ fn reabrir(alvo: &Path) -> std::io::Result<()> {
         .map(|c| c.id)
         .collect();
     let mut cmd = std::process::Command::new(alvo);
-    cmd.arg(ARG_APOS_ATUALIZAR).arg(std::process::id().to_string());
+    cmd.arg(ARG_APOS_ATUALIZAR)
+        .arg(std::process::id().to_string());
     if !ligadas.is_empty() {
         cmd.arg(ARG_RECONECTAR).arg(ligadas.join(","));
     }
@@ -462,7 +479,10 @@ impl ErroHttp {
             )
             .into(),
             ErroHttp::Status(s) => {
-                trf!("O GitHub respondeu com erro (HTTP {s}).", "GitHub returned an error (HTTP {s}).")
+                trf!(
+                    "O GitHub respondeu com erro (HTTP {s}).",
+                    "GitHub returned an error (HTTP {s})."
+                )
             }
             ErroHttp::Grande => tr!("Resposta grande demais.", "Response too large.").into(),
             ErroHttp::Url => tr!("Endereço inválido.", "Invalid address.").into(),
@@ -509,7 +529,9 @@ mod tests {
                  "digest":"sha256:{}"}}"#,
             HASH.to_uppercase()
         );
-        let v = interpretar(&release("v1.0.1", &anexo), "1.0.0").unwrap().unwrap();
+        let v = interpretar(&release("v1.0.1", &anexo), "1.0.0")
+            .unwrap()
+            .unwrap();
         assert_eq!(v.numero, "1.0.1");
         assert_eq!(v.download, "https://x/VPN.exe");
         assert_eq!(v.tamanho, 123);
@@ -518,14 +540,23 @@ mod tests {
         assert!(v.pagina.ends_with("/v1.0.1"));
 
         // same or older version: nothing to offer
-        assert_eq!(interpretar(&release("v1.0.0", &anexo), "1.0.0").unwrap(), None);
+        assert_eq!(
+            interpretar(&release("v1.0.0", &anexo), "1.0.0").unwrap(),
+            None
+        );
         // without the published digest, only from the page
-        let sem_hash = format!(r#"{{"name":"{ARQUIVO}","browser_download_url":"https://x/VPN.exe","size":1}}"#);
+        let sem_hash = format!(
+            r#"{{"name":"{ARQUIVO}","browser_download_url":"https://x/VPN.exe","size":1}}"#
+        );
         let sem_hash = sem_hash.as_str();
-        let v = interpretar(&release("v2.0.0", sem_hash), "1.0.0").unwrap().unwrap();
+        let v = interpretar(&release("v2.0.0", sem_hash), "1.0.0")
+            .unwrap()
+            .unwrap();
         assert!(!v.instalavel());
         // without the asset, only from the page
-        let v = interpretar(&release("v2.0.0", ""), "1.0.0").unwrap().unwrap();
+        let v = interpretar(&release("v2.0.0", ""), "1.0.0")
+            .unwrap()
+            .unwrap();
         assert!(!v.instalavel());
         // a pre-release is never offered
         let pre = String::from_utf8(release("v9.0.0", &anexo))
@@ -561,8 +592,10 @@ mod tests {
                         r.extend_from_slice(corpo);
                         r
                     }
-                    None => b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-                        .to_vec(),
+                    None => {
+                        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .to_vec()
+                    }
                 };
                 let _ = s.write_all(&resp);
             }
@@ -577,7 +610,8 @@ mod tests {
         let hash = sha256_hex(&novo_exe).unwrap();
         let base = servidor(vec![("/VPN.exe", novo_exe.clone())]);
 
-        let pasta = std::env::temp_dir().join(format!("vpn-teste-atualizacao-{}", std::process::id()));
+        let pasta =
+            std::env::temp_dir().join(format!("vpn-teste-atualizacao-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&pasta);
         std::fs::create_dir_all(&pasta).unwrap();
         let alvo = pasta.join("VPN.exe");
@@ -602,7 +636,10 @@ mod tests {
         let mut fracoes = Vec::new();
         baixar_e_trocar(&versao(&hash), &alvo, &mut |f| fracoes.push(f)).unwrap();
         assert_eq!(std::fs::read(&alvo).unwrap(), novo_exe);
-        assert_eq!(std::fs::read(vizinho(&alvo, "antigo")).unwrap(), b"MZ versao atual");
+        assert_eq!(
+            std::fs::read(vizinho(&alvo, "antigo")).unwrap(),
+            b"MZ versao atual"
+        );
         assert!(!vizinho(&alvo, "novo").exists());
         assert_eq!(fracoes.last().copied(), Some(1.0));
 
@@ -618,11 +655,11 @@ mod tests {
     fn consulta_a_api_por_http() {
         let corpo = release("v9.9.9", "");
         let base = servidor(vec![("/latest", corpo)]);
-        let v = consultar(&format!("{base}/latest"), "1.0.0").unwrap().unwrap();
+        let v = consultar(&format!("{base}/latest"), "1.0.0")
+            .unwrap()
+            .unwrap();
         assert_eq!(v.numero, "9.9.9");
         let e = consultar(&format!("{base}/outro"), "1.0.0").unwrap_err();
         assert!(e.contains("Nenhuma versão publicada"), "{e}");
     }
-
-
 }

@@ -29,7 +29,12 @@ pub fn aguardar_processo(pid: u32, limite: Duration) {
 
 pub fn sha256_hex(dados: &[u8]) -> Option<String> {
     use sha2::Digest;
-    Some(sha2::Sha256::digest(dados).iter().map(|b| format!("{b:02x}")).collect())
+    Some(
+        sha2::Sha256::digest(dados)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect(),
+    )
 }
 
 /// Linux: the build is not signed.
@@ -39,7 +44,11 @@ pub fn assinante(_caminho: &Path) -> Option<String> {
 
 /// Simple GET (follows HTTPS redirects, like the one of the asset
 /// downloads). `progresso` receives the bytes read so far.
-pub fn http_get(url: &str, limite: usize, progresso: &mut dyn FnMut(u64)) -> Result<Vec<u8>, ErroHttp> {
+pub fn http_get(
+    url: &str,
+    limite: usize,
+    progresso: &mut dyn FnMut(u64),
+) -> Result<Vec<u8>, ErroHttp> {
     use std::io::Read;
     if url::Url::parse(url).is_err() {
         return Err(ErroHttp::Url);
@@ -48,11 +57,16 @@ pub fn http_get(url: &str, limite: usize, progresso: &mut dyn FnMut(u64)) -> Res
         .timeout_connect(Duration::from_secs(15))
         .timeout_read(Duration::from_secs(30))
         .try_proxy_from_env(true)
-        .user_agent(&format!("VPN/{VERSAO_ATUAL} (+https://github.com/{REPOSITORIO})"))
+        .user_agent(&format!(
+            "VPN/{VERSAO_ATUAL} (+https://github.com/{REPOSITORIO})"
+        ))
         .build();
     let resposta = agente
         .get(url)
-        .set("Accept", "application/vnd.github+json, application/octet-stream")
+        .set(
+            "Accept",
+            "application/vnd.github+json, application/octet-stream",
+        )
         .set("X-GitHub-Api-Version", "2022-11-28")
         .call()
         .map_err(|e| match e {

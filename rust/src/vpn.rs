@@ -73,7 +73,10 @@ impl Queda {
 fn avisar_queda(aviso: Option<AvisoQueda>, nome: &str) {
     match aviso {
         Some(AvisoQueda::Caiu) => crate::notificar(
-            trf!("{nome} caiu. Reconectando...", "{nome} dropped. Reconnecting..."),
+            trf!(
+                "{nome} caiu. Reconectando...",
+                "{nome} dropped. Reconnecting..."
+            ),
             true,
         ),
         Some(AvisoQueda::Voltou) => crate::notificar(
@@ -228,9 +231,9 @@ fn parse_bytecount(rest: &str, last: &mut Option<(Instant, u64, u64)>) -> Option
 /// type (tapctl hwid) to create. Each simultaneous connection needs its own
 /// virtual adapter.
 fn adaptador_em_falta(log: &str) -> Option<&'static str> {
-    let linha = log.lines().find(|l| {
-        l.contains("currently in use or disabled") || l.contains("create an adapter")
-    })?;
+    let linha = log
+        .lines()
+        .find(|l| l.contains("currently in use or disabled") || l.contains("create an adapter"))?;
     let l = linha.to_lowercase();
     Some(if l.contains("ovpn-dco") {
         "ovpn-dco"
@@ -265,7 +268,10 @@ fn texto_do_estado(partes: &[&str]) -> String {
         }
         if let Some(servidor) = campo(4) {
             let porta = campo(5).map(|p| format!(":{p}")).unwrap_or_default();
-            texto.push_str(&trf!("  -  servidor {servidor}{porta}", "  -  server {servidor}{porta}"));
+            texto.push_str(&trf!(
+                "  -  servidor {servidor}{porta}",
+                "  -  server {servidor}{porta}"
+            ));
         }
     }
     texto
@@ -338,12 +344,18 @@ pub fn start(conta: Conta, openvpn: PathBuf) -> Controller {
             match service::criar_adaptador(&openvpn, hwid) {
                 Ok(()) => state::log(
                     &nome,
-                    tr!("Adaptador criado. Conectando de novo...", "Adapter created. Connecting again..."),
+                    tr!(
+                        "Adaptador criado. Conectando de novo...",
+                        "Adapter created. Connecting again..."
+                    ),
                 ),
                 Err(e) => {
                     state::log(
                         &nome,
-                        trf!("Não foi possível criar o adaptador: {e}", "Could not create the adapter: {e}"),
+                        trf!(
+                            "Não foi possível criar o adaptador: {e}",
+                            "Could not create the adapter: {e}"
+                        ),
                     );
                     crate::error_box_async(trf!(
                         "{nome}: não há adaptador de rede livre para mais uma conexão \
@@ -395,7 +407,14 @@ fn registrar_tipo_de_tunel(conta: &Conta, nome: &str, ip_local: Option<&str>) {
 /// (an administrator approves it) and tries again.
 fn iniciar_pelo_servico(nome: &str, cfg_dir: &Path, opcoes: &str) -> Option<service::Processo> {
     let falhou = |e: &Falha| {
-        state::log(nome, trf!("Não consegui iniciar o OpenVPN: {}", "Could not start OpenVPN: {}", e.mensagem()));
+        state::log(
+            nome,
+            trf!(
+                "Não consegui iniciar o OpenVPN: {}",
+                "Could not start OpenVPN: {}",
+                e.mensagem()
+            ),
+        );
         crate::error_box_async(trf!(
             "{nome}: não consegui iniciar o OpenVPN.\n\n{}",
             "{nome}: could not start OpenVPN.\n\n{}",
@@ -410,10 +429,22 @@ fn iniciar_pelo_servico(nome: &str, cfg_dir: &Path, opcoes: &str) -> Option<serv
                 return None;
             }
             if let Err(e) = service::autorizar_usuario_atual() {
-                state::log(nome, trf!("Autorização não concluída: {e}", "Authorization not completed: {e}"));
+                state::log(
+                    nome,
+                    trf!(
+                        "Autorização não concluída: {e}",
+                        "Authorization not completed: {e}"
+                    ),
+                );
                 return None;
             }
-            state::log(nome, tr!("Usuário autorizado no OpenVPN.", "User authorized in OpenVPN."));
+            state::log(
+                nome,
+                tr!(
+                    "Usuário autorizado no OpenVPN.",
+                    "User authorized in OpenVPN."
+                ),
+            );
             match service::iniciar(cfg_dir, opcoes) {
                 Ok(p) => Some(p),
                 Err(e) => {
@@ -431,7 +462,10 @@ fn iniciar_pelo_servico(nome: &str, cfg_dir: &Path, opcoes: &str) -> Option<serv
 
 /// Explains the one-time authorization and asks whether to go ahead.
 fn perguntar_autorizacao() -> bool {
-    crate::dialogs::sim_nao(&service::pergunta_de_autorizacao(), crate::dialogs::Nivel::Info)
+    crate::dialogs::sim_nao(
+        &service::pergunta_de_autorizacao(),
+        crate::dialogs::Nivel::Info,
+    )
 }
 
 /// Runs one connection attempt. Returns Some(reason) when it is worth trying
@@ -444,7 +478,11 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
     let _ = std::fs::create_dir_all(log_file.parent().unwrap_or(Path::new(".")));
     state::log(
         nome,
-        trf!("Iniciando o OpenVPN ({})", "Starting OpenVPN ({})", conta.arquivo()),
+        trf!(
+            "Iniciando o OpenVPN ({})",
+            "Starting OpenVPN ({})",
+            conta.arquivo()
+        ),
     );
 
     let mut opcoes = vec![
@@ -479,9 +517,7 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
             );
         }
     }
-    let Some(processo) = iniciar_pelo_servico(nome, &cfg_dir, &opcoes.join(" ")) else {
-        return None;
-    };
+    let processo = iniciar_pelo_servico(nome, &cfg_dir, &opcoes.join(" "))?;
     registrar_processo(&conta.id, Some(processo.pid));
     if !processo.acompanhavel() {
         state::log(
@@ -629,7 +665,13 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
                 let Some(senha) = conta.compor_senha(token.as_deref()) else {
                     continue;
                 };
-                state::log(nome, tr!("Enviando usuário e senha...", "Sending username and password..."));
+                state::log(
+                    nome,
+                    tr!(
+                        "Enviando usuário e senha...",
+                        "Sending username and password..."
+                    ),
+                );
                 if let Some(s) = stream.as_mut() {
                     let msg = format!(
                         "username \"Auth\" \"{}\"\r\npassword \"Auth\" \"{}\"\r\n",
@@ -649,7 +691,11 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
                     ),
                 );
                 // a wrong fixed password does not get better by retrying
-                let limite = if conta.autenticacao.usa_token() { MAX_AUTH_FAILURES } else { 1 };
+                let limite = if conta.autenticacao.usa_token() {
+                    MAX_AUTH_FAILURES
+                } else {
+                    1
+                };
                 if auth_failures >= limite {
                     let segredo = if conta.autenticacao.usa_token() {
                         "seed"
@@ -669,7 +715,10 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
             } else if let Some(rest) = line.strip_prefix(">STATE:") {
                 let parts: Vec<&str> = rest.split(',').collect();
                 let state = parts.get(1).unwrap_or(&"").to_string();
-                let ip = parts.get(3).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                let ip = parts
+                    .get(3)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
                 let situacao = state::situacao_do_openvpn(&state);
                 if !sem_dco && dco_ocupado(&state, parts.get(2).unwrap_or(&"")) {
                     refazer_sem_dco = true;
@@ -751,7 +800,14 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
     if let Some(hwid) = adaptador_em_falta(&texto_log) {
         return Some(Repetir::CriarAdaptador(hwid));
     }
-    for erro in erros_do_log(&texto_log).into_iter().rev().take(3).collect::<Vec<_>>().into_iter().rev() {
+    for erro in erros_do_log(&texto_log)
+        .into_iter()
+        .rev()
+        .take(3)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+    {
         state::log(nome, erro);
     }
     if queda.esteve_conectada {
@@ -782,7 +838,10 @@ mod tests {
         assert_eq!(texto_do_estado(&partes), "Estado: WAIT");
         // missing fields: only what is there
         let partes: Vec<&str> = "1791413018,CONNECTED,SUCCESS,10.8.0.6".split(',').collect();
-        assert_eq!(texto_do_estado(&partes), "Estado: CONNECTED  -  IP 10.8.0.6");
+        assert_eq!(
+            texto_do_estado(&partes),
+            "Estado: CONNECTED  -  IP 10.8.0.6"
+        );
     }
 
     #[test]
@@ -806,7 +865,10 @@ mod tests {
         assert_eq!(q.situacao(Situacao::Conectando, t1 + QUEDA_AVISO / 2), None);
         assert_eq!(q.tick(t1 + QUEDA_AVISO), Some(AvisoQueda::Caiu));
         assert_eq!(q.tick(t1 + QUEDA_AVISO * 3), None);
-        assert_eq!(q.situacao(Situacao::Conectado, t1 + QUEDA_AVISO * 4), Some(AvisoQueda::Voltou));
+        assert_eq!(
+            q.situacao(Situacao::Conectado, t1 + QUEDA_AVISO * 4),
+            Some(AvisoQueda::Voltou)
+        );
         assert_eq!(q.situacao(Situacao::Conectado, t1 + QUEDA_AVISO * 4), None);
     }
 
@@ -821,7 +883,10 @@ mod tests {
         lembrar_sem_dco(&id);
         lembrar_sem_dco(&id);
         assert!(usar_sem_dco(&id));
-        assert_eq!(SEM_DCO.lock().unwrap().iter().filter(|c| **c == id).count(), 1);
+        assert_eq!(
+            SEM_DCO.lock().unwrap().iter().filter(|c| **c == id).count(),
+            1
+        );
     }
 
     #[test]
@@ -853,7 +918,10 @@ mod tests {
                       You should be able to create an adapter by using tapctl.exe utility.";
         assert!(adaptador_em_falta(nenhum).is_some());
 
-        assert_eq!(adaptador_em_falta("TLS handshake failed\nExiting due to fatal error"), None);
+        assert_eq!(
+            adaptador_em_falta("TLS handshake failed\nExiting due to fatal error"),
+            None
+        );
     }
 
     /// Regression (v1.1.1): when the connection ends - including with the window
@@ -869,8 +937,13 @@ mod tests {
         state::definir(&outra.id, Situacao::Conectado, Some("10.0.0.6".into()));
 
         // non-existent openvpn: the attempt fails and the thread ends
-        let ctrl = start(conta.clone(), PathBuf::from(r"C:
-ao\existe\openvpn.exe"));
+        let ctrl = start(
+            conta.clone(),
+            PathBuf::from(
+                r"C:
+ao\existe\openvpn.exe",
+            ),
+        );
         let limite = Instant::now() + Duration::from_secs(10);
         while Instant::now() < limite && !ctrl.is_finished() {
             std::thread::sleep(Duration::from_millis(50));

@@ -11,7 +11,11 @@ fn caixa(texto: &str, nivel: Nivel, pergunta: bool) -> bool {
         Nivel::Aviso => gtk::MessageType::Warning,
         Nivel::Erro => gtk::MessageType::Error,
     };
-    let botoes = if pergunta { gtk::ButtonsType::YesNo } else { gtk::ButtonsType::Ok };
+    let botoes = if pergunta {
+        gtk::ButtonsType::YesNo
+    } else {
+        gtk::ButtonsType::Ok
+    };
     let d = gtk::MessageDialog::new(
         None::<&gtk::Window>,
         gtk::DialogFlags::MODAL,
@@ -100,11 +104,19 @@ fn escolher(
 pub fn abrir_arquivo(titulo: &str, filtro: Filtro, pasta: Option<PathBuf>) -> Option<PathBuf> {
     let (titulo, nome) = (titulo.to_string(), filtro.nome.to_string());
     let extensoes: Vec<String> = filtro.extensoes.iter().map(|e| e.to_string()).collect();
-    super::desktop::na_thread_gtk(move || escolher(&titulo, &nome, &extensoes, pasta, None)).flatten()
+    super::desktop::na_thread_gtk(move || escolher(&titulo, &nome, &extensoes, pasta, None))
+        .flatten()
 }
 
 pub fn salvar_arquivo(titulo: &str, filtro: Filtro, sugerido: &str) -> Option<PathBuf> {
-    let (titulo, nome, sugerido) = (titulo.to_string(), filtro.nome.to_string(), sugerido.to_string());
+    let (titulo, nome, sugerido) = (
+        titulo.to_string(),
+        filtro.nome.to_string(),
+        sugerido.to_string(),
+    );
     let extensoes: Vec<String> = filtro.extensoes.iter().map(|e| e.to_string()).collect();
-    super::desktop::na_thread_gtk(move || escolher(&titulo, &nome, &extensoes, None, Some(sugerido))).flatten()
+    super::desktop::na_thread_gtk(move || {
+        escolher(&titulo, &nome, &extensoes, None, Some(sugerido))
+    })
+    .flatten()
 }

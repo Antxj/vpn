@@ -96,7 +96,10 @@ mod tests {
     #[test]
     fn entrada_de_autostart() {
         let c = conteudo("/home/maria/Apps/VPN $teste.AppImage");
-        assert!(c.contains("Exec=\"/home/maria/Apps/VPN \\$teste.AppImage\" --startup"), "{c}");
+        assert!(
+            c.contains("Exec=\"/home/maria/Apps/VPN \\$teste.AppImage\" --startup"),
+            "{c}"
+        );
         assert!(c.starts_with("[Desktop Entry]\n"));
     }
 }

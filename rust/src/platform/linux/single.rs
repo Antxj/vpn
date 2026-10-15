@@ -72,7 +72,10 @@ mod tests {
 
     #[test]
     fn segunda_instancia_avisa_a_primeira() {
-        std::env::set_var("VPN_INSTANCE", format!("teste-single-{}", std::process::id()));
+        std::env::set_var(
+            "VPN_INSTANCE",
+            format!("teste-single-{}", std::process::id()),
+        );
         assert!(acquire_or_signal());
         let ouvinte = OUVINTE.lock().unwrap().take().unwrap();
         ouvinte.set_nonblocking(false).unwrap();

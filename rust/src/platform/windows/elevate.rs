@@ -70,7 +70,10 @@ pub fn executar_como_admin(exe: &Path, params: &str) -> Result<u32, String> {
                 "the administrator permission was declined"
             )
             .to_string(),
-            e => trf!("não foi possível executar como administrador (erro {e})", "could not run as administrator (error {e})"),
+            e => trf!(
+                "não foi possível executar como administrador (erro {e})",
+                "could not run as administrator (error {e})"
+            ),
         });
     }
     if info.h_process.is_null() {

@@ -80,9 +80,9 @@ mod tests {
             ip(172, 16, 0, 1),
             ip(172, 31, 255, 254),
             ip(192, 168, 0, 10),
-            ip(100, 64, 0, 1),   // CGNAT
+            ip(100, 64, 0, 1), // CGNAT
             ip(100, 127, 255, 1),
-            ip(169, 254, 1, 1),  // link-local
+            ip(169, 254, 1, 1), // link-local
             ip(127, 0, 0, 1),
             ip(0, 0, 0, 0),
         ] {
@@ -112,7 +112,11 @@ mod tests {
         ];
         assert!(classificar(&completo, 7));
         // split tunnel: company networks only
-        let dividido = vec![(ip(0, 0, 0, 0), 0, 3), (ip(10, 20, 0, 0), 16, 9), (ip(172, 16, 0, 0), 12, 9)];
+        let dividido = vec![
+            (ip(0, 0, 0, 0), 0, 3),
+            (ip(10, 20, 0, 0), 16, 9),
+            (ip(172, 16, 0, 0), 12, 9),
+        ];
         assert!(!classificar(&dividido, 9));
         // only one of the halves is not a full tunnel
         assert!(!classificar(&[(ip(0, 0, 0, 0), 1, 9)], 9));

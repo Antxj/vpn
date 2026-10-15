@@ -30,7 +30,10 @@ impl Autenticacao {
 
     pub fn rotulo(self) -> &'static str {
         match self {
-            Autenticacao::Token => tr!("Token (Google Authenticator)", "Token (Google Authenticator)"),
+            Autenticacao::Token => tr!(
+                "Token (Google Authenticator)",
+                "Token (Google Authenticator)"
+            ),
             Autenticacao::Senha => tr!("Senha fixa", "Fixed password"),
             Autenticacao::SenhaMaisToken => tr!("Senha + token", "Password + token"),
             Autenticacao::SoCertificado => tr!("Só certificado", "Certificate only"),
@@ -125,10 +128,18 @@ impl Conta {
     /// Returns the message for the user when something is missing.
     pub fn validar(&self) -> Result<(), String> {
         if self.nome.trim().is_empty() {
-            return Err(tr!("Informe um nome para a conta.", "Enter a name for the account.").into());
+            return Err(tr!(
+                "Informe um nome para a conta.",
+                "Enter a name for the account."
+            )
+            .into());
         }
         if self.config.trim().is_empty() || !Path::new(&self.config).exists() {
-            return Err(tr!("Escolha um arquivo .ovpn válido.", "Choose a valid .ovpn file.").into());
+            return Err(tr!(
+                "Escolha um arquivo .ovpn válido.",
+                "Choose a valid .ovpn file."
+            )
+            .into());
         }
         // the .ovpn decides whether OpenVPN asks for a username and password
         let pede = pede_usuario_e_senha(Path::new(&self.config));
@@ -263,7 +274,11 @@ mod tests {
     fn so_certificado_segue_o_arquivo_ovpn() {
         let dir = dir_temp("certificado");
         let so_cert = dir.join("so-cert.ovpn");
-        std::fs::write(&so_cert, "client\n# auth-user-pass (commented out)\nremote x 1194\n").unwrap();
+        std::fs::write(
+            &so_cert,
+            "client\n# auth-user-pass (commented out)\nremote x 1194\n",
+        )
+        .unwrap();
         let com_senha = dir.join("com-senha.ovpn");
         std::fs::write(&com_senha, "client\n  auth-user-pass\nremote x 1194\n").unwrap();
         assert!(!pede_usuario_e_senha(&so_cert));
@@ -330,7 +345,11 @@ mod tests {
         assert!(redireciona_tudo(&a));
 
         let b = dir.join("b.ovpn");
-        std::fs::write(&b, "client\n# redirect-gateway def1\n;redirect-gateway\nroute 10.0.0.0 255.0.0.0\n").unwrap();
+        std::fs::write(
+            &b,
+            "client\n# redirect-gateway def1\n;redirect-gateway\nroute 10.0.0.0 255.0.0.0\n",
+        )
+        .unwrap();
         assert!(!redireciona_tudo(&b));
 
         assert!(!redireciona_tudo(&dir.join("nao-existe.ovpn")));

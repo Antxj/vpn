@@ -76,7 +76,11 @@ pub fn exportar(contas: &[Conta], senha: &str, destino: &Path) -> Result<Exporta
     let mut lista = Vec::new();
     for conta in contas {
         let (arquivos, faltam) = arquivos_da_conta(conta)?;
-        nao_incluidos.extend(faltam.into_iter().map(|f| format!("{}: {f}", conta.nome_exibicao())));
+        nao_incluidos.extend(
+            faltam
+                .into_iter()
+                .map(|f| format!("{}: {f}", conta.nome_exibicao())),
+        );
         lista.push(ContaExportada {
             conta: conta.clone(),
             arquivos,
@@ -95,7 +99,10 @@ pub fn exportar(contas: &[Conta], senha: &str, destino: &Path) -> Result<Exporta
         .and_then(|_| std::fs::rename(&temp, destino))
         .map_err(|e| {
             let _ = std::fs::remove_file(&temp);
-            trf!("Não foi possível gravar o arquivo: {e}", "Could not write the file: {e}")
+            trf!(
+                "Não foi possível gravar o arquivo: {e}",
+                "Could not write the file: {e}"
+            )
         })?;
     Ok(Exportado {
         contas: contas.len(),
@@ -120,7 +127,10 @@ fn arquivos_da_conta(conta: &Conta) -> Result<(Vec<Arquivo>, Vec<String>), Strin
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "config.ovpn".into());
     let pasta = config.parent().unwrap_or(Path::new("."));
-    let mut arquivos = vec![Arquivo { nome, dados: ovpn.clone() }];
+    let mut arquivos = vec![Arquivo {
+        nome,
+        dados: ovpn.clone(),
+    }];
     let mut faltam = Vec::new();
     for referencia in referencias(&String::from_utf8_lossy(&ovpn)) {
         let caminho = Path::new(&referencia);
@@ -178,7 +188,8 @@ fn relativo_seguro(p: &Path) -> bool {
     !s.is_empty()
         && !s.starts_with(['/', '\\'])
         && !s.contains(':')
-        && s.split(['/', '\\']).all(|c| !c.is_empty() && c != "." && c != "..")
+        && s.split(['/', '\\'])
+            .all(|c| !c.is_empty() && c != "." && c != "..")
 }
 
 // ---------------------------------------------------------------- import --
@@ -186,8 +197,12 @@ fn relativo_seguro(p: &Path) -> bool {
 /// Opens a backup. Wrong password and damaged file give the same message:
 /// the encryption cannot tell them apart.
 pub fn abrir(arquivo: &Path, senha: &str) -> Result<Vec<ContaExportada>, String> {
-    let dados = std::fs::read(arquivo)
-        .map_err(|e| trf!("Não foi possível ler o arquivo: {e}", "Could not read the file: {e}"))?;
+    let dados = std::fs::read(arquivo).map_err(|e| {
+        trf!(
+            "Não foi possível ler o arquivo: {e}",
+            "Could not read the file: {e}"
+        )
+    })?;
     let json = decifrar(&dados, senha)?;
     let conteudo: Conteudo = serde_json::from_slice(&json).map_err(|_| arquivo_invalido())?;
     if conteudo.versao != 1 {
@@ -198,8 +213,16 @@ pub fn abrir(arquivo: &Path, senha: &str) -> Result<Vec<ContaExportada>, String>
         .into());
     }
     for c in &conteudo.contas {
-        let primeiro_ok = c.arquivos.first().is_some_and(|a| nome_de_arquivo_simples(&a.nome));
-        if !primeiro_ok || !c.arquivos.iter().all(|a| relativo_seguro(Path::new(&a.nome))) {
+        let primeiro_ok = c
+            .arquivos
+            .first()
+            .is_some_and(|a| nome_de_arquivo_simples(&a.nome));
+        if !primeiro_ok
+            || !c
+                .arquivos
+                .iter()
+                .all(|a| relativo_seguro(Path::new(&a.nome)))
+        {
             return Err(arquivo_invalido());
         }
     }
@@ -250,7 +273,11 @@ fn id_de_pasta(id: &str) -> PathBuf {
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
         .take(64)
         .collect();
-    PathBuf::from(if limpo.is_empty() { "conta".to_string() } else { limpo })
+    PathBuf::from(if limpo.is_empty() {
+        "conta".to_string()
+    } else {
+        limpo
+    })
 }
 
 fn arquivo_invalido() -> String {
@@ -263,8 +290,15 @@ fn arquivo_invalido() -> String {
 
 // ---------------------------------------------------------- encryption --
 
-fn chave(senha: &str, sal: &[u8], memoria: u32, passadas: u32, faixas: u32) -> Result<[u8; 32], String> {
-    let params = Params::new(memoria, passadas, faixas, Some(32)).map_err(|_| arquivo_invalido())?;
+fn chave(
+    senha: &str,
+    sal: &[u8],
+    memoria: u32,
+    passadas: u32,
+    faixas: u32,
+) -> Result<[u8; 32], String> {
+    let params =
+        Params::new(memoria, passadas, faixas, Some(32)).map_err(|_| arquivo_invalido())?;
     let mut chave = [0u8; 32];
     Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
         .hash_password_into(senha.as_bytes(), sal, &mut chave)
@@ -289,7 +323,13 @@ fn cifrar(dados: &[u8], senha: &str) -> Result<Vec<u8>, String> {
     let cifra = Aes256Gcm::new_from_slice(&k).map_err(|e| e.to_string());
     k.fill(0);
     let cifrado = cifra?
-        .encrypt(&Nonce::from(nonce), Payload { msg: dados, aad: &saida })
+        .encrypt(
+            &Nonce::from(nonce),
+            Payload {
+                msg: dados,
+                aad: &saida,
+            },
+        )
         .map_err(|e| e.to_string())?;
     saida.extend_from_slice(&cifrado);
     Ok(saida)
@@ -305,7 +345,9 @@ fn decifrar(dados: &[u8], senha: &str) -> Result<Vec<u8>, String> {
     }
     let (cabecalho, cifrado) = dados.split_at(TAM_CABECALHO);
     let sal = &cabecalho[8..8 + TAM_SAL];
-    let nonce: [u8; TAM_NONCE] = cabecalho[8 + TAM_SAL..8 + TAM_SAL + TAM_NONCE].try_into().unwrap();
+    let nonce: [u8; TAM_NONCE] = cabecalho[8 + TAM_SAL..8 + TAM_SAL + TAM_NONCE]
+        .try_into()
+        .unwrap();
     let numero = |i: usize| {
         let ini = 8 + TAM_SAL + TAM_NONCE + i * 4;
         u32::from_le_bytes(cabecalho[ini..ini + 4].try_into().unwrap())
@@ -319,7 +361,13 @@ fn decifrar(dados: &[u8], senha: &str) -> Result<Vec<u8>, String> {
     let cifra = Aes256Gcm::new_from_slice(&k).map_err(|e| e.to_string());
     k.fill(0);
     cifra?
-        .decrypt(&Nonce::from(nonce), Payload { msg: cifrado, aad: cabecalho })
+        .decrypt(
+            &Nonce::from(nonce),
+            Payload {
+                msg: cifrado,
+                aad: cabecalho,
+            },
+        )
         .map_err(|_| arquivo_invalido())
 }
 
@@ -329,7 +377,8 @@ mod tests {
     use crate::accounts::Autenticacao;
 
     fn dir_temp(nome: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("vpn-backup-{nome}-{}", crate::accounts::novo_id()));
+        let d =
+            std::env::temp_dir().join(format!("vpn-backup-{nome}-{}", crate::accounts::novo_id()));
         std::fs::create_dir_all(&d).unwrap();
         d
     }
@@ -341,10 +390,23 @@ mod tests {
         let cifra = Aes256Gcm::new_from_slice(&[0u8; 32]).unwrap();
         let nonce = Nonce::from([0u8; TAM_NONCE]);
         let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
-        let vazio = cifra.encrypt(&nonce, Payload { msg: b"", aad: b"" }).unwrap();
+        let vazio = cifra
+            .encrypt(&nonce, Payload { msg: b"", aad: b"" })
+            .unwrap();
         assert_eq!(hex(&vazio), "530f8afbc74536b9a963b4f1c4cb738b");
-        let zeros = cifra.encrypt(&nonce, Payload { msg: &[0u8; 16], aad: b"" }).unwrap();
-        assert_eq!(hex(&zeros), "cea7403d4d606b6e074ec5d3baf39d18d0d1c8a799996bf0265b98b5d48ab919");
+        let zeros = cifra
+            .encrypt(
+                &nonce,
+                Payload {
+                    msg: &[0u8; 16],
+                    aad: b"",
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            hex(&zeros),
+            "cea7403d4d606b6e074ec5d3baf39d18d0d1c8a799996bf0265b98b5d48ab919"
+        );
     }
 
     #[test]
@@ -352,9 +414,20 @@ mod tests {
         let ovpn = "client\nca ca.crt\ncert \"pasta/meu cert.crt\"\n# key comentada.key\n\
                     key [inline]\n<tls-auth>\n-----\n</tls-auth>\ntls-crypt ../fora.key\n\
                     auth-user-pass\nca ca.crt\nremote vpn.exemplo 1194\n";
-        assert_eq!(referencias(ovpn), ["ca.crt", "pasta/meu cert.crt", "../fora.key"]);
+        assert_eq!(
+            referencias(ovpn),
+            ["ca.crt", "pasta/meu cert.crt", "../fora.key"]
+        );
         assert!(relativo_seguro(Path::new("pasta/meu cert.crt")));
-        for ruim in ["../fora.key", r"C:\chaves\a.key", r"\a.key", "", "/etc/x.key", r"..\x", "a/./b"] {
+        for ruim in [
+            "../fora.key",
+            r"C:\chaves\a.key",
+            r"\a.key",
+            "",
+            "/etc/x.key",
+            r"..\x",
+            "a/./b",
+        ] {
             assert!(!relativo_seguro(Path::new(ruim)), "{ruim}");
         }
     }
@@ -362,7 +435,11 @@ mod tests {
     #[test]
     fn exporta_e_importa_com_a_senha_certa() {
         let origem = dir_temp("origem");
-        std::fs::write(origem.join("trabalho.ovpn"), "client\nauth-user-pass\nca ca.crt\nkey C:\\fora\\x.key\n").unwrap();
+        std::fs::write(
+            origem.join("trabalho.ovpn"),
+            "client\nauth-user-pass\nca ca.crt\nkey C:\\fora\\x.key\n",
+        )
+        .unwrap();
         std::fs::write(origem.join("ca.crt"), "CERTIFICADO").unwrap();
         let conta = Conta {
             id: "c123-teste".into(),
@@ -386,7 +463,10 @@ mod tests {
             assert!(!texto.contains(segredo), "{segredo}");
         }
 
-        assert_eq!(abrir(&backup, "senha-errada").err().unwrap(), arquivo_invalido());
+        assert_eq!(
+            abrir(&backup, "senha-errada").err().unwrap(),
+            arquivo_invalido()
+        );
         let contas = abrir(&backup, "senha-forte-1").unwrap();
         assert_eq!(contas.len(), 1);
         assert_eq!(contas[0].conta, conta);
@@ -401,7 +481,10 @@ mod tests {
         let prontas = instalar(&contas, &base).unwrap();
         let novo = Path::new(&prontas[0].config);
         assert_eq!(novo, base.join("c123-teste").join("trabalho.ovpn"));
-        assert_eq!(std::fs::read_to_string(base.join("c123-teste").join("ca.crt")).unwrap(), "CERTIFICADO");
+        assert_eq!(
+            std::fs::read_to_string(base.join("c123-teste").join("ca.crt")).unwrap(),
+            "CERTIFICADO"
+        );
         assert_eq!(prontas[0].senha, "s3nha");
         let _ = std::fs::remove_dir_all(base);
     }
@@ -410,7 +493,15 @@ mod tests {
     fn recusa_arquivo_alterado_ou_estranho() {
         let dir = dir_temp("alterado");
         let p = dir.join("b.vpnbackup");
-        std::fs::write(&p, cifrar(b"{\"versao\":1,\"app\":\"x\",\"contas\":[]}", "senha-forte-1").unwrap()).unwrap();
+        std::fs::write(
+            &p,
+            cifrar(
+                b"{\"versao\":1,\"app\":\"x\",\"contas\":[]}",
+                "senha-forte-1",
+            )
+            .unwrap(),
+        )
+        .unwrap();
         assert!(abrir(&p, "senha-forte-1").unwrap().is_empty());
         // one changed byte (in the header or in the data) breaks the authentication
         for i in [MAGICO.len() + 1, TAM_CABECALHO + 3] {
@@ -421,7 +512,10 @@ mod tests {
             assert!(abrir(&q, "senha-forte-1").is_err(), "byte {i}");
         }
         std::fs::write(&p, b"qualquer coisa").unwrap();
-        assert!(abrir(&p, "senha-forte-1").err().unwrap().contains("não é um backup"));
+        assert!(abrir(&p, "senha-forte-1")
+            .err()
+            .unwrap()
+            .contains("não é um backup"));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -440,8 +534,15 @@ mod tests {
             }],
         };
         let p = dir.join("b.vpnbackup");
-        std::fs::write(&p, cifrar(&serde_json::to_vec(&conteudo).unwrap(), "senha-forte-1").unwrap()).unwrap();
-        assert_eq!(abrir(&p, "senha-forte-1").err().unwrap(), arquivo_invalido());
+        std::fs::write(
+            &p,
+            cifrar(&serde_json::to_vec(&conteudo).unwrap(), "senha-forte-1").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            abrir(&p, "senha-forte-1").err().unwrap(),
+            arquivo_invalido()
+        );
         assert_eq!(id_de_pasta("..\\x/y"), PathBuf::from("xy"));
         let _ = std::fs::remove_dir_all(dir);
     }

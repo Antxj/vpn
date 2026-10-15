@@ -27,7 +27,11 @@ pub fn rotas() -> Vec<(Ipv4Addr, u8, u32)> {
     linhas
         .iter()
         .filter_map(|r| {
-            Some((ipv4(&r.DestinationPrefix.Prefix)?, r.DestinationPrefix.PrefixLength, r.InterfaceIndex))
+            Some((
+                ipv4(&r.DestinationPrefix.Prefix)?,
+                r.DestinationPrefix.PrefixLength,
+                r.InterfaceIndex,
+            ))
         })
         .collect()
 }

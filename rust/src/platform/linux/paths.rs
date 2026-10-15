@@ -4,7 +4,9 @@ use std::path::PathBuf;
 
 /// The user's home folder.
 pub fn pasta_home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 /// App data folder (settings and logs): $XDG_CONFIG_HOME/vpn, usually ~/.config/vpn.

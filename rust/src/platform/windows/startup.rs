@@ -94,7 +94,10 @@ fn definir_valor(nome: &str, ligar: bool) -> Result<(), String> {
     if r == 0 {
         Ok(())
     } else {
-        Err(trf!("erro {r} no registro do Windows", "Windows registry error {r}"))
+        Err(trf!(
+            "erro {r} no registro do Windows",
+            "Windows registry error {r}"
+        ))
     }
 }
 

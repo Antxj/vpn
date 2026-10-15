@@ -8,7 +8,7 @@ repository = "https://github.com/Antxj/vpn"
 
 [dependencies]
 # OpenGL (glow) draws the window. On Windows, WGPU/DirectX 12 is also built in
-# for where OpenGL is not available (remote desktop, VMs) - see src/renderer.rs
+# for where OpenGL is not available (remote desktop, VMs) - see src/platform/windows/renderer.rs
 eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts"] }
 # without libxdo (not needed: the menu has no copy/paste items)
 tray-icon = { version = "0.19", default-features = false }

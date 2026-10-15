@@ -18,21 +18,25 @@ static GTK_OK: OnceLock<bool> = OnceLock::new();
 fn garantir_gtk() -> bool {
     *GTK_OK.get_or_init(|| {
         let (tx, rx) = mpsc::channel();
-        let criada = std::thread::Builder::new().name("gtk".into()).spawn(move || {
-            let ok = gtk::init().is_ok();
-            let _ = THREAD_GTK.set(std::thread::current().id());
-            let _ = tx.send(ok);
-            if ok {
-                gtk::main();
-            }
-        });
+        let criada = std::thread::Builder::new()
+            .name("gtk".into())
+            .spawn(move || {
+                let ok = gtk::init().is_ok();
+                let _ = THREAD_GTK.set(std::thread::current().id());
+                let _ = tx.send(ok);
+                if ok {
+                    gtk::main();
+                }
+            });
         criada.is_ok() && rx.recv().unwrap_or(false)
     })
 }
 
 /// Runs `f` on the GTK thread and waits for the result (directly, when
 /// already on it: e.g. a dialog opened from the tray menu).
-pub(super) fn na_thread_gtk<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+pub(super) fn na_thread_gtk<T: Send + 'static>(
+    f: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
     if !garantir_gtk() {
         return None;
     }
@@ -77,7 +81,9 @@ pub fn por_quadro(ctx: &egui::Context) {
     if ctx.input(|i| i.viewport().close_requested()) {
         ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         esconder(ctx);
-        if !TRAY_HINT_SHOWN.swap(true, Ordering::SeqCst) && std::env::var_os("VPN_SKIP_HINT").is_none() {
+        if !TRAY_HINT_SHOWN.swap(true, Ordering::SeqCst)
+            && std::env::var_os("VPN_SKIP_HINT").is_none()
+        {
             notificacao(
                 tr!(
                     "O aplicativo VPN continua ativo na bandeja. Clique no ícone para reabrir.",
@@ -128,7 +134,11 @@ fn notificar(texto: &str, alerta: bool, versao: bool) -> bool {
     n.summary(APP_TITLE)
         .body(texto)
         .appname(APP_TITLE)
-        .icon(if alerta { "network-vpn-disconnected" } else { "network-vpn" })
+        .icon(if alerta {
+            "network-vpn-disconnected"
+        } else {
+            "network-vpn"
+        })
         .action("default", tr!("Abrir", "Open"))
         .timeout(notify_rust::Timeout::Milliseconds(6000));
     match n.show() {

@@ -5,28 +5,28 @@
 // first: the tr!/trf! macros must be defined before the modules
 #[macro_use]
 mod i18n;
-mod update;
 mod accounts;
 mod backup;
-mod settings;
-mod state;
+mod dialogs;
 mod engine;
 mod qr;
 mod routes;
+mod settings;
+mod state;
 mod support;
 mod totp;
+mod update;
 mod vpn;
-mod dialogs;
 // what talks to the operating system: platform/windows or platform/linux
 mod platform;
 
-use platform::{desktop, installer, renderer, service, single, startup};
 pub(crate) use desktop::show_main_window;
+use platform::{desktop, installer, renderer, service, single, startup};
 
 use accounts::{Autenticacao, Conta};
 use eframe::egui;
-use state::{Agregado, Situacao};
 use engine::ErroConexao;
+use state::{Agregado, Situacao};
 use std::cell::RefCell;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -77,7 +77,10 @@ fn find_default_config() -> Option<PathBuf> {
         let mut ovpns: Vec<PathBuf> = entries
             .flatten()
             .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("ovpn")))
+            .filter(|p| {
+                p.extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("ovpn"))
+            })
             .collect();
         ovpns.sort();
         if let Some(first) = ovpns.into_iter().next() {
@@ -123,9 +126,8 @@ fn registrar_erro_de_inicio(error: &eframe::Error) -> String {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default();
-    let entry = format!(
-        "[unix {timestamp}] {WINDOW_TITLE}\nErro: {error}\nDetalhes: {error:#?}\n\n"
-    );
+    let entry =
+        format!("[unix {timestamp}] {WINDOW_TITLE}\nErro: {error}\nDetalhes: {error:#?}\n\n");
 
     let log_result = std::fs::create_dir_all(&app_dir).and_then(|_| {
         OpenOptions::new()
@@ -136,7 +138,11 @@ fn registrar_erro_de_inicio(error: &eframe::Error) -> String {
     });
 
     match log_result {
-        Ok(()) => trf!("Detalhes registrados em:\n{}", "Details logged in:\n{}", log_path.display()),
+        Ok(()) => trf!(
+            "Detalhes registrados em:\n{}",
+            "Details logged in:\n{}",
+            log_path.display()
+        ),
         Err(log_error) => trf!(
             "Não foi possível gravar o log: {log_error}",
             "Could not write the log: {log_error}"
@@ -188,17 +194,33 @@ fn apply_style(ctx: &egui::Context, dark: bool) {
     // the app's own theme, whatever the Windows one: egui keeps a dark and a
     // light style and, by default, picks one by the Windows theme (with
     // Windows in light mode it showed egui's plain style with dark cards)
-    let tema = if dark { egui::Theme::Dark } else { egui::Theme::Light };
+    let tema = if dark {
+        egui::Theme::Dark
+    } else {
+        egui::Theme::Light
+    };
     ctx.set_theme(tema);
     let mut style = (*ctx.style()).clone();
     style.visuals = visuals;
     use egui::{FontFamily, FontId, TextStyle};
     style.text_styles = [
-        (TextStyle::Heading, FontId::new(24.0, FontFamily::Proportional)),
+        (
+            TextStyle::Heading,
+            FontId::new(24.0, FontFamily::Proportional),
+        ),
         (TextStyle::Body, FontId::new(15.0, FontFamily::Proportional)),
-        (TextStyle::Button, FontId::new(15.0, FontFamily::Proportional)),
-        (TextStyle::Small, FontId::new(12.0, FontFamily::Proportional)),
-        (TextStyle::Monospace, FontId::new(12.5, FontFamily::Monospace)),
+        (
+            TextStyle::Button,
+            FontId::new(15.0, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Small,
+            FontId::new(12.0, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Monospace,
+            FontId::new(12.5, FontFamily::Monospace),
+        ),
     ]
     .into();
     style.spacing.item_spacing = egui::vec2(8.0, 8.0);
@@ -231,19 +253,21 @@ struct TrayUi {
     itens: Vec<(String, CheckMenuItem)>,
     /// (id, name) of the accounts, new version offered and language of the
     /// current menu; None = menu not built yet.
-    assinatura: Option<(Vec<(String, String)>, Option<String>, bool)>,
+    assinatura: Option<AssinaturaDoMenu>,
     last_icon: usize,
     last_tip: String,
 }
+
+/// (id, name) of the accounts, new version offered, Portuguese?
+type AssinaturaDoMenu = (Vec<(String, String)>, Option<String>, bool);
+/// Tray menu, checkable item of each account, action of each menu id.
+type MenuMontado = (Menu, Vec<(String, CheckMenuItem)>, Vec<(MenuId, AcaoMenu)>);
 
 thread_local! {
     static TRAY_UI: RefCell<Option<TrayUi>> = const { RefCell::new(None) };
 }
 
-fn montar_menu(
-    contas: &[(String, String)],
-    versao_nova: Option<&str>,
-) -> (Menu, Vec<(String, CheckMenuItem)>, Vec<(MenuId, AcaoMenu)>) {
+fn montar_menu(contas: &[(String, String)], versao_nova: Option<&str>) -> MenuMontado {
     let menu = Menu::new();
     let mut acoes = Vec::new();
     let mut itens = Vec::new();
@@ -350,7 +374,10 @@ fn criar_bandeja() {
     let tray = TrayIconBuilder::new()
         .with_menu(Box::new(Menu::new()))
         .with_menu_on_left_click(false)
-        .with_tooltip(format!("{APP_TITLE} - {}", tr!("Desconectado", "Disconnected")))
+        .with_tooltip(format!(
+            "{APP_TITLE} - {}",
+            tr!("Desconectado", "Disconnected")
+        ))
         .with_icon(icon_gray.clone())
         .build()
         .expect("failed to create the tray icon");
@@ -378,7 +405,10 @@ fn alternar_conta(id: &str) -> Result<(), ErroConexao> {
     }
     let conflitos = m.conflitos_de_rota(id);
     if !conflitos.is_empty() {
-        let nome = m.conta(id).map(|c| c.nome_exibicao().to_string()).unwrap_or_default();
+        let nome = m
+            .conta(id)
+            .map(|c| c.nome_exibicao().to_string())
+            .unwrap_or_default();
         let sim = dialogs::sim_nao(
             &trf!(
                 "\"{nome}\" e \"{}\" mandam todo o tráfego da internet pela VPN.\n\n\
@@ -466,7 +496,11 @@ pub fn error_box_async(msg: String) {
 /// Drawn toggle switch: on = blue.
 fn toggle(ui: &mut egui::Ui, ligado: bool, habilitado: bool) -> egui::Response {
     let tamanho = egui::vec2(44.0, 24.0);
-    let sentido = if habilitado { egui::Sense::click() } else { egui::Sense::hover() };
+    let sentido = if habilitado {
+        egui::Sense::click()
+    } else {
+        egui::Sense::hover()
+    };
     let (rect, response) = ui.allocate_exact_size(tamanho, sentido);
     if ui.is_rect_visible(rect) {
         let anim = ui.ctx().animate_bool(response.id, ligado);
@@ -477,7 +511,11 @@ fn toggle(ui: &mut egui::Ui, ligado: bool, habilitado: bool) -> egui::Response {
         } else {
             egui::Color32::from_gray(190)
         };
-        let fundo = if habilitado { fundo } else { fundo.gamma_multiply(0.35) };
+        let fundo = if habilitado {
+            fundo
+        } else {
+            fundo.gamma_multiply(0.35)
+        };
         let raio = rect.height() / 2.0;
         ui.painter().rect_filled(rect, raio, fundo);
         let x = egui::lerp((rect.left() + raio)..=(rect.right() - raio), anim);
@@ -555,16 +593,32 @@ fn abas_do_log(contas: &[Conta]) -> Vec<String> {
 
 /// Soft color of each account in the log (by position in the list).
 fn cor_da_conta(i: usize, dark: bool) -> egui::Color32 {
-    const ESCURO: [(u8, u8, u8); 5] =
-        [(0x60, 0xa5, 0xfa), (0x34, 0xd3, 0x99), (0xfb, 0xbf, 0x24), (0xf4, 0x72, 0xb6), (0xa7, 0x8b, 0xfa)];
-    const CLARO: [(u8, u8, u8); 5] =
-        [(0x1d, 0x4e, 0xd8), (0x04, 0x78, 0x57), (0xb4, 0x53, 0x09), (0xbe, 0x18, 0x5d), (0x6d, 0x28, 0xd9)];
+    const ESCURO: [(u8, u8, u8); 5] = [
+        (0x60, 0xa5, 0xfa),
+        (0x34, 0xd3, 0x99),
+        (0xfb, 0xbf, 0x24),
+        (0xf4, 0x72, 0xb6),
+        (0xa7, 0x8b, 0xfa),
+    ];
+    const CLARO: [(u8, u8, u8); 5] = [
+        (0x1d, 0x4e, 0xd8),
+        (0x04, 0x78, 0x57),
+        (0xb4, 0x53, 0x09),
+        (0xbe, 0x18, 0x5d),
+        (0x6d, 0x28, 0xd9),
+    ];
     let (r, g, b) = if dark { ESCURO[i % 5] } else { CLARO[i % 5] };
     egui::Color32::from_rgb(r, g, b)
 }
 
 /// Discreet log tab: small text, underlined when selected. Returns true when clicked.
-fn aba(ui: &mut egui::Ui, texto: &str, ativa: bool, cor: Option<egui::Color32>, dark: bool) -> bool {
+fn aba(
+    ui: &mut egui::Ui,
+    texto: &str,
+    ativa: bool,
+    cor: Option<egui::Color32>,
+    dark: bool,
+) -> bool {
     let cor_texto = if ativa {
         cor.unwrap_or_else(|| ui.visuals().strong_text_color())
     } else {
@@ -615,7 +669,11 @@ fn executar_backup(jb: &mut JanelaBackup, m: &engine::Motor) -> Result<(), Strin
             ));
         }
         if jb.senha != jb.confirmar {
-            return Err(tr!("As duas senhas não são iguais.", "The two passwords do not match.").into());
+            return Err(tr!(
+                "As duas senhas não são iguais.",
+                "The two passwords do not match."
+            )
+            .into());
         }
         let data = state::data_e_hora_local();
         let Some(destino) = dialogs::salvar_arquivo(
@@ -655,7 +713,11 @@ fn executar_backup(jb: &mut JanelaBackup, m: &engine::Motor) -> Result<(), Strin
         for c in &prontas {
             m.salvar_conta(c.clone());
         }
-        jb.concluido = Some(trf!("Importado: {}.", "Imported: {}.", contas_texto(prontas.len())));
+        jb.concluido = Some(trf!(
+            "Importado: {}.",
+            "Imported: {}.",
+            contas_texto(prontas.len())
+        ));
     } else {
         jb.contas = Some(backup::abrir(&jb.arquivo, &jb.senha)?);
         jb.senha.clear();
@@ -685,16 +747,25 @@ fn link_codigo_fonte(ui: &mut egui::Ui, logo: &egui::TextureHandle, dark: bool) 
         } else {
             label_color(dark)
         };
-        let r_icone =
-            egui::Rect::from_min_size(egui::pos2(rect.left(), rect.center().y - icone / 2.0), egui::vec2(icone, icone));
+        let r_icone = egui::Rect::from_min_size(
+            egui::pos2(rect.left(), rect.center().y - icone / 2.0),
+            egui::vec2(icone, icone),
+        );
         let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
         ui.painter().image(logo.id(), r_icone, uv, cor);
-        let pos = egui::pos2(r_icone.right() + espaco, rect.center().y - galley.size().y / 2.0);
-        ui.painter().galley_with_override_text_color(pos, galley, cor);
+        let pos = egui::pos2(
+            r_icone.right() + espaco,
+            rect.center().y - galley.size().y / 2.0,
+        );
+        ui.painter()
+            .galley_with_override_text_color(pos, galley, cor);
     }
     let resposta = resposta
         .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text(format!("{url}\n{}", tr!("Licença GPL-3.0", "GPL-3.0 license")));
+        .on_hover_text(format!(
+            "{url}\n{}",
+            tr!("Licença GPL-3.0", "GPL-3.0 license")
+        ));
     if resposta.clicked() {
         let _ = open::that(&url);
     }
@@ -747,7 +818,11 @@ fn linha_toggle(
             };
             ui.add(egui::Label::new(egui::RichText::new(titulo).color(cor)).truncate());
             if !descricao.is_empty() {
-                ui.label(egui::RichText::new(descricao).small().color(label_color(dark)));
+                ui.label(
+                    egui::RichText::new(descricao)
+                        .small()
+                        .color(label_color(dark)),
+                );
             }
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -860,7 +935,10 @@ impl App {
         // turn back on the accounts that were connected before the update
         for id in RECONECTAR.get().into_iter().flatten() {
             if let Err(e) = m.conectar(id, find_openvpn()) {
-                let nome = m.conta(id).map(|c| c.nome_exibicao().to_string()).unwrap_or_default();
+                let nome = m
+                    .conta(id)
+                    .map(|c| c.nome_exibicao().to_string())
+                    .unwrap_or_default();
                 state::log(
                     &nome,
                     trf!("Não reconectou: {}", "Did not reconnect: {}", e.mensagem()),
@@ -885,7 +963,14 @@ impl App {
                 continue;
             }
             if let Err(e) = m.conectar(&conta.id, find_openvpn()) {
-                state::log(nome, trf!("Não conectou ao abrir: {}", "Not connected on open: {}", e.mensagem()));
+                state::log(
+                    nome,
+                    trf!(
+                        "Não conectou ao abrir: {}",
+                        "Not connected on open: {}",
+                        e.mensagem()
+                    ),
+                );
             }
         }
         let ctx = cc.egui_ctx.clone();
@@ -903,7 +988,11 @@ impl App {
         let mut app = Self {
             dark,
             // no accounts: open straight on the sign-up screen
-            tela: if m.contas().is_empty() { Tela::Contas } else { Tela::Inicio },
+            tela: if m.contas().is_empty() {
+                Tela::Contas
+            } else {
+                Tela::Inicio
+            },
             editor: None,
             qr_open: false,
             aba_log: None,
@@ -1053,7 +1142,10 @@ impl App {
                             }
                         }
                         Err(msg) => {
-                            state::log("", trf!("Falha na instalação: {msg}", "Installation failed: {msg}"));
+                            state::log(
+                                "",
+                                trf!("Falha na instalação: {msg}", "Installation failed: {msg}"),
+                            );
                             show_main_window();
                             error_box(&trf!(
                                 "Não foi possível instalar o OpenVPN.\n\n{msg}",
@@ -1115,7 +1207,10 @@ impl App {
         };
         match image::open(&path) {
             Ok(img) => self.import_qr_image(img),
-            Err(_) => error_box(tr!("Não consegui abrir essa imagem.", "Could not open this image.")),
+            Err(_) => error_box(tr!(
+                "Não consegui abrir essa imagem.",
+                "Could not open this image."
+            )),
         }
     }
 
@@ -1192,7 +1287,11 @@ impl App {
                 i18n::aplicar(m.idioma());
                 self.dark = m.tema_escuro();
                 apply_style(ui.ctx(), self.dark);
-                self.tela = if m.contas().is_empty() { Tela::Contas } else { Tela::Inicio };
+                self.tela = if m.contas().is_empty() {
+                    Tela::Contas
+                } else {
+                    Tela::Inicio
+                };
             }
         }
 
@@ -1220,10 +1319,9 @@ impl App {
                     } else {
                         tr!("Baixar", "Download")
                     };
-                    let btn = egui::Button::new(
-                        egui::RichText::new(rotulo).color(egui::Color32::WHITE),
-                    )
-                    .fill(ACCENT);
+                    let btn =
+                        egui::Button::new(egui::RichText::new(rotulo).color(egui::Color32::WHITE))
+                            .fill(ACCENT);
                     if ui.add(btn).clicked() {
                         if embutido {
                             instalar = true;
@@ -1256,7 +1354,7 @@ impl App {
                         "Cadastre a primeira VPN para conectar.",
                         "Add your first VPN to connect."
                     ))
-                        .color(label_color(self.dark)),
+                    .color(label_color(self.dark)),
                 );
                 ui.add_space(12.0);
                 let btn = egui::Button::new(
@@ -1276,7 +1374,11 @@ impl App {
         let varias_ativas = contas.iter().filter(|c| m.ativa(&c.id)).count() > 1;
         let altura_log = 150.0
             + if varias_ativas { 44.0 } else { 0.0 }
-            + if abas_do_log(&contas).len() >= 2 { 26.0 } else { 0.0 };
+            + if abas_do_log(&contas).len() >= 2 {
+                26.0
+            } else {
+                0.0
+            };
         let altura_lista = (ui.available_height() - altura_log).max(120.0);
         let mut erro: Option<ErroConexao> = None;
 
@@ -1357,13 +1459,12 @@ impl App {
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
                                         let ocupada = e.situacao == Situacao::Desconectando;
-                                        let r = toggle(ui, ligada, !ocupada).on_hover_text(
-                                            if ligada {
+                                        let r =
+                                            toggle(ui, ligada, !ocupada).on_hover_text(if ligada {
                                                 tr!("Desconectar", "Disconnect")
                                             } else {
                                                 tr!("Conectar", "Connect")
-                                            },
-                                        );
+                                            });
                                         if r.clicked() {
                                             if let Err(err) = alternar_conta(&conta.id) {
                                                 erro = Some(err);
@@ -1383,7 +1484,10 @@ impl App {
 
         if varias_ativas {
             ui.vertical_centered(|ui| {
-                if ui.button(tr!("Desconectar todas", "Disconnect all")).clicked() {
+                if ui
+                    .button(tr!("Desconectar todas", "Disconnect all"))
+                    .clicked()
+                {
                     m.desconectar_todas();
                 }
             });
@@ -1431,9 +1535,12 @@ impl App {
                             }
                         }
                         if !entradas.is_empty() {
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                self.botao_copiar_log(ui, &entradas, &contas);
-                            });
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    self.botao_copiar_log(ui, &entradas, &contas);
+                                },
+                            );
                         }
                     });
                     ui.add_space(4.0);
@@ -1451,8 +1558,8 @@ impl App {
                                     "As mensagens das conexões aparecem aqui.",
                                     "Connection messages appear here."
                                 ))
-                                    .small()
-                                    .color(label_color(dark)),
+                                .small()
+                                .color(label_color(dark)),
                             );
                         }
                         // same size and font as the log always had (small text)
@@ -1488,14 +1595,27 @@ impl App {
 
     /// "Copy" on the log: the lines of the open tab, without secrets or
     /// usernames, ready to paste in a message to whoever gives support.
-    fn botao_copiar_log(&mut self, ui: &mut egui::Ui, entradas: &[state::Entrada], contas: &[Conta]) {
+    fn botao_copiar_log(
+        &mut self,
+        ui: &mut egui::Ui,
+        entradas: &[state::Entrada],
+        contas: &[Conta],
+    ) {
         const FEEDBACK: Duration = Duration::from_secs(2);
         let copiado = self.log_copiado.is_some_and(|t| t.elapsed() < FEEDBACK);
-        let rotulo = if copiado { tr!("Copiado!", "Copied!") } else { tr!("Copiar", "Copy") };
+        let rotulo = if copiado {
+            tr!("Copiado!", "Copied!")
+        } else {
+            tr!("Copiar", "Copy")
+        };
         let r = ui
             .add(
-                egui::Label::new(egui::RichText::new(rotulo).small().color(label_color(self.dark)))
-                    .sense(egui::Sense::click()),
+                egui::Label::new(
+                    egui::RichText::new(rotulo)
+                        .small()
+                        .color(label_color(self.dark)),
+                )
+                .sense(egui::Sense::click()),
             )
             .on_hover_cursor(egui::CursorIcon::PointingHand)
             .on_hover_text(tr!(
@@ -1515,10 +1635,7 @@ impl App {
                     self.log_copiado = Some(Instant::now());
                     ui.ctx().request_repaint_after(FEEDBACK);
                 }
-                Err(e) => error_box(&trf!(
-                    "Não foi possível copiar: {e}",
-                    "Could not copy: {e}"
-                )),
+                Err(e) => error_box(&trf!("Não foi possível copiar: {e}", "Could not copy: {e}")),
             }
         }
     }
@@ -1543,7 +1660,11 @@ impl App {
         let contas = m.contas();
         let fundo_cartao = fundo_cartao(self.dark);
 
-        ui.label(egui::RichText::new(tr!("Contas", "Accounts")).size(18.0).strong());
+        ui.label(
+            egui::RichText::new(tr!("Contas", "Accounts"))
+                .size(18.0)
+                .strong(),
+        );
         ui.add_space(4.0);
         let mut editar: Option<Conta> = None;
         let mut remover: Option<Conta> = None;
@@ -1558,7 +1679,7 @@ impl App {
                             "Nenhuma conta ainda. Adicione a primeira abaixo.",
                             "No accounts yet. Add the first one below."
                         ))
-                            .color(label_color(self.dark)),
+                        .color(label_color(self.dark)),
                     );
                 }
                 for conta in &contas {
@@ -1629,8 +1750,8 @@ impl App {
                             ui.add(
                                 egui::Label::new(
                                     egui::RichText::new(detalhes)
-                                    .small()
-                                    .color(label_color(self.dark)),
+                                        .small()
+                                        .color(label_color(self.dark)),
                                 )
                                 .truncate(),
                             );
@@ -1646,7 +1767,10 @@ impl App {
             )
             .fill(ACCENT);
             // saved accounts unreadable (Linux keyring): nothing could be saved
-            if ui.add_enabled(!settings::contas_ilegiveis(), nova).clicked() {
+            if ui
+                .add_enabled(!settings::contas_ilegiveis(), nova)
+                .clicked()
+            {
                 let mut c = Conta::nova();
                 c.config = find_default_config()
                     .map(|p| p.to_string_lossy().into_owned())
@@ -1684,7 +1808,11 @@ impl App {
         let pequeno = |t: &str| egui::RichText::new(t).small().color(fraco);
 
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(tr!("Configurações", "Settings")).size(18.0).strong());
+            ui.label(
+                egui::RichText::new(tr!("Configurações", "Settings"))
+                    .size(18.0)
+                    .strong(),
+            );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 link_codigo_fonte(ui, &self.logo_github, dark);
             });
@@ -1978,12 +2106,22 @@ impl App {
                          this password: the file does not open without it."
                     ));
                     ui.add_space(6.0);
-                    let r = campo_senha(ui, tr!("SENHA DO BACKUP", "BACKUP PASSWORD"), &mut jb.senha, jb.mostrar);
+                    let r = campo_senha(
+                        ui,
+                        tr!("SENHA DO BACKUP", "BACKUP PASSWORD"),
+                        &mut jb.senha,
+                        jb.mostrar,
+                    );
                     if jb.senha.is_empty() && jb.confirmar.is_empty() && jb.erro.is_none() {
                         r.request_focus();
                     }
                     ui.add_space(4.0);
-                    let r = campo_senha(ui, tr!("REPITA A SENHA", "REPEAT THE PASSWORD"), &mut jb.confirmar, jb.mostrar);
+                    let r = campo_senha(
+                        ui,
+                        tr!("REPITA A SENHA", "REPEAT THE PASSWORD"),
+                        &mut jb.confirmar,
+                        jb.mostrar,
+                    );
                     agir |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 } else if let Some(contas) = &jb.contas {
                     ui.label(trf!(
@@ -1996,7 +2134,10 @@ impl App {
                     for c in contas {
                         let mut linha = format!("•  {}", c.conta.nome_exibicao());
                         if existentes.iter().any(|e| e.id == c.conta.id) {
-                            linha.push_str(tr!("  (atualiza a que já existe)", "  (updates the existing one)"));
+                            linha.push_str(tr!(
+                                "  (atualiza a que já existe)",
+                                "  (updates the existing one)"
+                            ));
                         }
                         ui.label(linha);
                     }
@@ -2004,10 +2145,18 @@ impl App {
                     ui.label(trf!(
                         "Arquivo: {}",
                         "File: {}",
-                        jb.arquivo.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()
+                        jb.arquivo
+                            .file_name()
+                            .map(|n| n.to_string_lossy())
+                            .unwrap_or_default()
                     ));
                     ui.add_space(6.0);
-                    let r = campo_senha(ui, tr!("SENHA DO BACKUP", "BACKUP PASSWORD"), &mut jb.senha, jb.mostrar);
+                    let r = campo_senha(
+                        ui,
+                        tr!("SENHA DO BACKUP", "BACKUP PASSWORD"),
+                        &mut jb.senha,
+                        jb.mostrar,
+                    );
                     if jb.senha.is_empty() && jb.erro.is_none() {
                         r.request_focus();
                     }
@@ -2029,7 +2178,9 @@ impl App {
                     } else {
                         tr!("Abrir", "Open")
                     };
-                    let btn = egui::Button::new(egui::RichText::new(acao).color(egui::Color32::WHITE)).fill(ACCENT);
+                    let btn =
+                        egui::Button::new(egui::RichText::new(acao).color(egui::Color32::WHITE))
+                            .fill(ACCENT);
                     agir |= ui.add(btn).clicked();
                     if ui.button(tr!("Cancelar", "Cancel")).clicked() {
                         fechar = true;
@@ -2082,7 +2233,7 @@ impl App {
                             "Version {} is available.",
                             v.numero
                         ))
-                            .strong(),
+                        .strong(),
                     );
                     ui.label(
                         egui::RichText::new(trf!(
@@ -2128,7 +2279,11 @@ impl App {
                     });
                 }
                 Estado::Baixando(v, fracao) => {
-                    ui.label(trf!("Baixando a versão {}...", "Downloading version {}...", v.numero));
+                    ui.label(trf!(
+                        "Baixando a versão {}...",
+                        "Downloading version {}...",
+                        v.numero
+                    ));
                     ui.add(egui::ProgressBar::new(*fracao).show_percentage());
                 }
                 Estado::Reiniciando(v) => {
@@ -2145,10 +2300,14 @@ impl App {
                     ui.colored_label(egui::Color32::from_rgb(0xdc, 0x26, 0x26), erro);
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if v.instalavel() && ui.button(tr!("Tentar de novo", "Try again")).clicked() {
+                        if v.instalavel() && ui.button(tr!("Tentar de novo", "Try again")).clicked()
+                        {
                             instalar = true;
                         }
-                        if ui.button(tr!("Abrir página da versão", "Open release page")).clicked() {
+                        if ui
+                            .button(tr!("Abrir página da versão", "Open release page"))
+                            .clicked()
+                        {
                             let _ = open::that(&v.pagina);
                         }
                         if ui.button(tr!("Fechar", "Close")).clicked() {
@@ -2172,7 +2331,9 @@ impl App {
         let mut salvar = false;
         let mut cancelar = false;
         let mut abrir_qr = false;
-        let Some(ed) = self.editor.as_mut() else { return };
+        let Some(ed) = self.editor.as_mut() else {
+            return;
+        };
 
         ui.label(
             egui::RichText::new(if ed.nova {
@@ -2180,8 +2341,8 @@ impl App {
             } else {
                 tr!("Editar conta", "Edit account")
             })
-                .size(18.0)
-                .strong(),
+            .size(18.0)
+            .strong(),
         );
         ui.add_space(4.0);
 
@@ -2197,7 +2358,14 @@ impl App {
                 );
                 ui.add_space(4.0);
 
-                rotulo(ui, tr!("ARQUIVO DE CONFIGURAÇÃO (.OVPN)", "CONFIGURATION FILE (.OVPN)"), dark);
+                rotulo(
+                    ui,
+                    tr!(
+                        "ARQUIVO DE CONFIGURAÇÃO (.OVPN)",
+                        "CONFIGURATION FILE (.OVPN)"
+                    ),
+                    dark,
+                );
                 ui.horizontal(|ui| {
                     let mut nome_arquivo = ed.conta.arquivo();
                     if nome_arquivo.is_empty() {
@@ -2213,7 +2381,11 @@ impl App {
                             .parent()
                             .map(PathBuf::from)
                             .filter(|p| p.is_dir())
-                            .or_else(|| platform::openvpn::pastas_de_config().into_iter().find(|d| d.is_dir()));
+                            .or_else(|| {
+                                platform::openvpn::pastas_de_config()
+                                    .into_iter()
+                                    .find(|d| d.is_dir())
+                            });
                         let escolhido = dialogs::abrir_arquivo(
                             tr!("Escolha o arquivo .ovpn", "Choose the .ovpn file"),
                             dialogs::Filtro {
@@ -2268,12 +2440,19 @@ impl App {
 
                 if ed.conta.autenticacao.usa_token() {
                     ui.horizontal(|ui| {
-                        rotulo(ui, tr!("SEED DO GOOGLE AUTHENTICATOR", "GOOGLE AUTHENTICATOR SEED"), dark);
+                        rotulo(
+                            ui,
+                            tr!("SEED DO GOOGLE AUTHENTICATOR", "GOOGLE AUTHENTICATOR SEED"),
+                            dark,
+                        );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
                                 .button(
-                                    egui::RichText::new(tr!("Importar QR Code...", "Import QR code..."))
-                                        .small(),
+                                    egui::RichText::new(tr!(
+                                        "Importar QR Code...",
+                                        "Import QR code..."
+                                    ))
+                                    .small(),
                                 )
                                 .clicked()
                             {
@@ -2318,7 +2497,7 @@ impl App {
             let btn = egui::Button::new(
                 egui::RichText::new(tr!("Salvar", "Save")).color(egui::Color32::WHITE),
             )
-                .fill(ACCENT);
+            .fill(ACCENT);
             if ui.add(btn).clicked() {
                 salvar = true;
             }
@@ -2336,7 +2515,9 @@ impl App {
             return;
         }
         if salvar {
-            let Some(ed) = self.editor.as_mut() else { return };
+            let Some(ed) = self.editor.as_mut() else {
+                return;
+            };
             let mut c = ed.conta.clone();
             c.nome = c.nome.trim().to_string();
             c.usuario = c.usuario.trim().to_string();
@@ -2409,7 +2590,10 @@ impl App {
                     if ui.add(pick).clicked() {
                         do_file = true;
                     }
-                    if ui.button(tr!("Colar imagem copiada", "Paste copied image")).clicked() {
+                    if ui
+                        .button(tr!("Colar imagem copiada", "Paste copied image"))
+                        .clicked()
+                    {
                         do_clip = true;
                     }
                 });
@@ -2456,8 +2640,11 @@ impl eframe::App for App {
                         // each screen's button turns into "Back" in the same spot:
                         // open and close a screen without moving the mouse
                         let voltar = |ui: &mut egui::Ui| {
-                            ui.add(egui::Button::new(tr!("Voltar", "Back")).min_size(egui::vec2(0.0, 32.0)))
-                                .clicked()
+                            ui.add(
+                                egui::Button::new(tr!("Voltar", "Back"))
+                                    .min_size(egui::vec2(0.0, 32.0)),
+                            )
+                            .clicked()
                         };
                         // rightmost slot: settings (or "Back" while in settings)
                         match self.tela {
@@ -2470,7 +2657,11 @@ impl eframe::App for App {
                             Tela::Inicio => {
                                 let b = egui::Button::new(egui::RichText::new("⚙").size(18.0))
                                     .min_size(egui::vec2(40.0, 32.0));
-                                if ui.add(b).on_hover_text(tr!("Configurações", "Settings")).clicked() {
+                                if ui
+                                    .add(b)
+                                    .on_hover_text(tr!("Configurações", "Settings"))
+                                    .clicked()
+                                {
                                     self.tela = Tela::Configuracoes;
                                 }
                             }
@@ -2504,11 +2695,14 @@ impl eframe::App for App {
                                 "Versão {v} disponível",
                                 "Version {v} available"
                             ))
-                                .small()
-                                .color(ACCENT);
+                            .small()
+                            .color(ACCENT);
                             if ui
                                 .link(texto)
-                                .on_hover_text(tr!("Ver e instalar a atualização", "View and install the update"))
+                                .on_hover_text(tr!(
+                                    "Ver e instalar a atualização",
+                                    "View and install the update"
+                                ))
                                 .clicked()
                             {
                                 self.janela_atualizacao = true;
@@ -2623,7 +2817,14 @@ fn main() -> eframe::Result<()> {
     let (desenho, motivo) = renderer::escolher(forcar_dx12);
     // only the exception goes to the log (useful when the log is sent to support)
     if desenho.excecao() {
-        state::log("", trf!("Interface: {} ({motivo})", "Interface: {} ({motivo})", desenho.nome()));
+        state::log(
+            "",
+            trf!(
+                "Interface: {} ({motivo})",
+                "Interface: {} ({motivo})",
+                desenho.nome()
+            ),
+        );
     }
 
     let viewport = egui::ViewportBuilder::default()
@@ -2693,8 +2894,14 @@ mod tests {
     #[test]
     fn mapeamento_de_estado_do_openvpn() {
         assert_eq!(state::situacao_do_openvpn("CONNECTED"), Situacao::Conectado);
-        assert_eq!(state::situacao_do_openvpn("RECONNECTING"), Situacao::Reconectando);
-        assert_eq!(state::situacao_do_openvpn("EXITING"), Situacao::Desconectando);
+        assert_eq!(
+            state::situacao_do_openvpn("RECONNECTING"),
+            Situacao::Reconectando
+        );
+        assert_eq!(
+            state::situacao_do_openvpn("EXITING"),
+            Situacao::Desconectando
+        );
         assert_eq!(state::situacao_do_openvpn("WAIT"), Situacao::Conectando);
     }
 
@@ -2713,7 +2920,10 @@ mod tests {
                 };
                 let _ = ctx.run(entrada, |_| {});
                 let estilo = ctx.style();
-                assert_eq!(estilo.visuals.dark_mode, escuro, "{sistema:?}, dark {escuro}");
+                assert_eq!(
+                    estilo.visuals.dark_mode, escuro,
+                    "{sistema:?}, dark {escuro}"
+                );
                 // our fonts, not egui's defaults
                 assert_eq!(estilo.text_styles[&egui::TextStyle::Body].size, 15.0);
             }
@@ -2736,7 +2946,10 @@ mod tests {
             }
         }
         let mut lista = Vec::new();
-        arquivos(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut lista);
+        arquivos(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut lista,
+        );
         assert!(lista.len() > 10);
         for arquivo in lista {
             let texto = std::fs::read_to_string(&arquivo).unwrap();
@@ -2744,9 +2957,15 @@ mod tests {
                 // inside a string literal: an odd number of quotes before the gap
                 if let Some(pos) = linha.trim_end().find("      ") {
                     let antes = &linha[..pos];
-                    let tem_texto_antes = antes.trim_end().len() == antes.len() && !antes.trim().is_empty();
+                    let tem_texto_antes =
+                        antes.trim_end().len() == antes.len() && !antes.trim().is_empty();
                     if tem_texto_antes && antes.matches('"').count() % 2 == 1 {
-                        panic!("{}:{}: spaces inside a text: {}", arquivo.display(), n + 1, linha.trim());
+                        panic!(
+                            "{}:{}: spaces inside a text: {}",
+                            arquivo.display(),
+                            n + 1,
+                            linha.trim()
+                        );
                     }
                 }
             }
@@ -2760,7 +2979,10 @@ mod tests {
             apply_style(&ctx, dark);
             let largura = ctx.style().spacing.tooltip_width;
             // room for the tooltip frame and the window border
-            assert!(largura + 40.0 <= WINDOW_SIZE[0], "tooltip width {largura} does not fit");
+            assert!(
+                largura + 40.0 <= WINDOW_SIZE[0],
+                "tooltip width {largura} does not fit"
+            );
         }
     }
 
@@ -2780,14 +3002,18 @@ mod tests {
             })
             .collect();
         assert_eq!(alternar, vec!["a", "b"]);
-        assert!(acoes.iter().any(|(_, a)| matches!(a, AcaoMenu::DesconectarTodas)));
+        assert!(acoes
+            .iter()
+            .any(|(_, a)| matches!(a, AcaoMenu::DesconectarTodas)));
         assert!(acoes.iter().any(|(_, a)| matches!(a, AcaoMenu::Sair)));
 
         assert!(!acoes.iter().any(|(_, a)| matches!(a, AcaoMenu::Atualizar)));
 
         // a single account: no "Disconnect all"
         let (_m, _i, acoes) = montar_menu(&contas[..1], None);
-        assert!(!acoes.iter().any(|(_, a)| matches!(a, AcaoMenu::DesconectarTodas)));
+        assert!(!acoes
+            .iter()
+            .any(|(_, a)| matches!(a, AcaoMenu::DesconectarTodas)));
 
         // new version published: item to update
         let (_m, _i, acoes) = montar_menu(&contas, Some("1.0.1"));

@@ -30,7 +30,7 @@ fn pct(s: &str) -> String {
     percent_decode_str(s).decode_utf8_lossy().into_owned()
 }
 
-fn param<'a>(url: &'a url::Url, names: &[&str]) -> Option<String> {
+fn param(url: &url::Url, names: &[&str]) -> Option<String> {
     url.query_pairs()
         .find(|(k, _)| names.contains(&k.to_lowercase().as_str()))
         .map(|(_, v)| v.into_owned())
@@ -92,7 +92,9 @@ mod tests {
     #[test]
     fn otpauth_simples() {
         // common format: label with the username only
-        let d = parse_payload(&format!("otpauth://totp/usuario.teste?secret={SEED}&issuer=Empresa"));
+        let d = parse_payload(&format!(
+            "otpauth://totp/usuario.teste?secret={SEED}&issuer=Empresa"
+        ));
         assert_eq!(d.seed.as_deref(), Some(SEED));
         assert_eq!(d.user.as_deref(), Some("usuario.teste"));
     }
@@ -110,7 +112,9 @@ mod tests {
     fn seed_crua_e_invalidos() {
         let d = parse_payload("gezd gnbv gy3t qojq gezd gnbv gy3t qojq");
         assert_eq!(d.seed.as_deref(), Some(SEED));
-        assert!(parse_payload("https://exemplo.com.br/pagina").seed.is_none());
+        assert!(parse_payload("https://exemplo.com.br/pagina")
+            .seed
+            .is_none());
         assert!(parse_payload("123!").seed.is_none());
     }
 

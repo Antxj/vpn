@@ -17,8 +17,7 @@ static ORIGINAL_TRAY_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 use windows_sys::Win32::Foundation::RECT;
 use windows_sys::Win32::UI::Shell::{
     Shell_NotifyIconGetRect, Shell_NotifyIconW, NIF_INFO, NIIF_INFO, NIIF_RESPECT_QUIET_TIME,
-    NIIF_WARNING, NIM_MODIFY,
-    NOTIFYICONDATAW, NOTIFYICONIDENTIFIER,
+    NIIF_WARNING, NIM_MODIFY, NOTIFYICONDATAW, NOTIFYICONIDENTIFIER,
 };
 
 // -------------------------------------------------------- Win32 (window) ---
@@ -294,7 +293,9 @@ fn devolver_memoria_quando_escondido() {
     std::thread::spawn(move || {
         // lets the last frame finish
         std::thread::sleep(Duration::from_secs(3));
-        if VEZES_ESCONDIDA.load(Ordering::SeqCst) == vez && !MAIN_WINDOW_VISIBLE.load(Ordering::SeqCst) {
+        if VEZES_ESCONDIDA.load(Ordering::SeqCst) == vez
+            && !MAIN_WINDOW_VISIBLE.load(Ordering::SeqCst)
+        {
             // (-1, -1): removes as many pages as possible from the working set
             unsafe {
                 SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
@@ -313,16 +314,15 @@ unsafe extern "system" fn main_wnd_proc(
         esconder_janela(hwnd);
         if !TRAY_HINT_SHOWN.load(Ordering::SeqCst)
             && std::env::var_os("VPN_SKIP_HINT").is_none()
-        {
-            if show_tray_notification(
+            && show_tray_notification(
                 tr!(
                     "O aplicativo VPN continua ativo na bandeja. Clique no ícone para reabrir.",
                     "VPN is still running in the system tray. Click the icon to reopen it."
                 ),
                 false,
-            ) {
-                TRAY_HINT_SHOWN.store(true, Ordering::SeqCst);
-            }
+            )
+        {
+            TRAY_HINT_SHOWN.store(true, Ordering::SeqCst);
         }
         return 0;
     }
@@ -342,7 +342,12 @@ const WM_USER_TRAYICON: u32 = 6002;
 /// The user clicked the notification balloon (lParam of the callback).
 const NIN_BALLOONUSERCLICK: isize = 0x0405;
 
-unsafe extern "system" fn tray_wnd_proc(hwnd: *mut c_void, msg: u32, wparam: usize, lparam: isize) -> isize {
+unsafe extern "system" fn tray_wnd_proc(
+    hwnd: *mut c_void,
+    msg: u32,
+    wparam: usize,
+    lparam: isize,
+) -> isize {
     if msg == WM_USER_TRAYICON && lparam == NIN_BALLOONUSERCLICK {
         if AVISO_E_DE_VERSAO.swap(false, Ordering::SeqCst) {
             ABRIR_ATUALIZACAO.store(true, Ordering::SeqCst);
@@ -363,7 +368,11 @@ fn install_tray_click_hook() {
     unsafe {
         let hwnd = find_own_tray_window();
         if !hwnd.is_null() {
-            let previous = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, tray_wnd_proc as *const () as usize as isize);
+            let previous = SetWindowLongPtrW(
+                hwnd,
+                GWLP_WNDPROC,
+                tray_wnd_proc as *const () as usize as isize,
+            );
             ORIGINAL_TRAY_WNDPROC.store(previous, Ordering::SeqCst);
         }
     }
@@ -459,7 +468,6 @@ fn create_tick_window() {
     }
 }
 
-
 /// Windows notification from the tray icon (safe wrapper).
 pub fn notificacao(texto: &str, alerta: bool) -> bool {
     unsafe { show_tray_notification(texto, alerta) }
@@ -491,7 +499,8 @@ pub fn ocultar_antes_do_primeiro_quadro() {
 pub fn por_quadro(_ctx: &egui::Context) {
     install_main_window_hook();
     install_tray_click_hook();
-    if MAIN_WNDPROC_INSTALLED.load(Ordering::SeqCst) && INICIAR_OCULTO.swap(false, Ordering::SeqCst) {
+    if MAIN_WNDPROC_INSTALLED.load(Ordering::SeqCst) && INICIAR_OCULTO.swap(false, Ordering::SeqCst)
+    {
         unsafe {
             let hwnd = find_main_window();
             if !hwnd.is_null() {

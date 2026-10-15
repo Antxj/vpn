@@ -28,7 +28,9 @@ impl ErroConexao {
                 "OpenVPN Community is not installed on this computer."
             )
             .into(),
-            ErroConexao::ContaInexistente => tr!("Conta não encontrada.", "Account not found.").into(),
+            ErroConexao::ContaInexistente => {
+                tr!("Conta não encontrada.", "Account not found.").into()
+            }
             ErroConexao::Invalida(m) => m.clone(),
         }
     }
@@ -240,9 +242,7 @@ impl Motor {
 
         // the same .ovpn twice at the same time would fight over the same routes
         let mesma_config = self.contas().into_iter().find(|c| {
-            c.id != id
-                && self.ativa(&c.id)
-                && Path::new(&c.config) == Path::new(&conta.config)
+            c.id != id && self.ativa(&c.id) && Path::new(&c.config) == Path::new(&conta.config)
         });
         if let Some(outra) = mesma_config {
             return Err(ErroConexao::Invalida(trf!(

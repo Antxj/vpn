@@ -7,9 +7,17 @@ use crate::accounts::Conta;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-pub use crate::platform::paths::app_dir;
 pub use crate::platform::secret::{protect, unprotect};
 
+/// App data folder (accounts, logs, openvpn.pids). Unit tests get a folder
+/// of their own, so they never touch the files of the everyday app; the
+/// harness that writes sample accounts (VPN_EXEMPLO_JSON) uses the real one.
+pub fn app_dir() -> PathBuf {
+    if cfg!(test) && std::env::var_os("VPN_EXEMPLO_JSON").is_none() {
+        return std::env::temp_dir().join("vpn-testes");
+    }
+    crate::platform::paths::app_dir()
+}
 
 /// Current version of the settings file format.
 pub const VERSAO_SETTINGS: u32 = 2;
@@ -58,7 +66,10 @@ fn ler_arquivo(caminho: &std::path::Path) -> Option<Settings> {
 
 pub fn load_settings() -> Settings {
     let lido = ler_arquivo(&settings_file());
-    if crate::platform::secret::PODE_FICAR_INDISPONIVEL && lido.is_none() && settings_file().exists() {
+    if crate::platform::secret::PODE_FICAR_INDISPONIVEL
+        && lido.is_none()
+        && settings_file().exists()
+    {
         ILEGIVEL.store(true, std::sync::atomic::Ordering::SeqCst);
     }
     let mut s = lido.unwrap_or_default();
@@ -139,7 +150,8 @@ mod tests {
     #[test]
     #[ignore]
     fn grava_contas_de_exemplo() {
-        let json = std::fs::read(std::env::var("VPN_EXEMPLO_JSON").expect("VPN_EXEMPLO_JSON")).unwrap();
+        let json =
+            std::fs::read(std::env::var("VPN_EXEMPLO_JSON").expect("VPN_EXEMPLO_JSON")).unwrap();
         let s: Settings = serde_json::from_slice(&json).unwrap();
         save_settings(&s);
         assert_eq!(load_settings().contas.len(), s.contas.len());
@@ -156,6 +168,8 @@ mod tests {
             atualizacoes: Some(false),
             ..Default::default()
         };
-        assert!(serde_json::to_string(&s).unwrap().contains("\"atualizacoes\":false"));
+        assert!(serde_json::to_string(&s)
+            .unwrap()
+            .contains("\"atualizacoes\":false"));
     }
 }

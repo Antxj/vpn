@@ -36,4 +36,3 @@ pub fn abrir_arquivo(titulo: &str, filtro: Filtro, pasta: Option<PathBuf>) -> Op
 pub fn salvar_arquivo(titulo: &str, filtro: Filtro, nome: &str) -> Option<PathBuf> {
     imp::salvar_arquivo(titulo, filtro, nome)
 }
-

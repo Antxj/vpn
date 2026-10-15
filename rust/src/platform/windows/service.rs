@@ -52,14 +52,36 @@ extern "system" {
         template: *mut c_void,
     ) -> *mut c_void;
     fn WaitNamedPipeW(name: *const u16, timeout_ms: u32) -> i32;
-    fn SetNamedPipeHandleState(pipe: *mut c_void, mode: *const u32, max: *const u32, timeout: *const u32) -> i32;
-    fn WriteFile(h: *mut c_void, buf: *const c_void, len: u32, written: *mut u32, overlapped: *mut c_void) -> i32;
-    fn ReadFile(h: *mut c_void, buf: *mut c_void, len: u32, read: *mut u32, overlapped: *mut c_void) -> i32;
+    fn SetNamedPipeHandleState(
+        pipe: *mut c_void,
+        mode: *const u32,
+        max: *const u32,
+        timeout: *const u32,
+    ) -> i32;
+    fn WriteFile(
+        h: *mut c_void,
+        buf: *const c_void,
+        len: u32,
+        written: *mut u32,
+        overlapped: *mut c_void,
+    ) -> i32;
+    fn ReadFile(
+        h: *mut c_void,
+        buf: *mut c_void,
+        len: u32,
+        read: *mut u32,
+        overlapped: *mut c_void,
+    ) -> i32;
     fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
     fn WaitForSingleObject(h: *mut c_void, ms: u32) -> u32;
     fn GetExitCodeProcess(h: *mut c_void, code: *mut u32) -> i32;
     fn TerminateProcess(h: *mut c_void, code: u32) -> i32;
-    fn QueryFullProcessImageNameW(h: *mut c_void, flags: u32, name: *mut u16, size: *mut u32) -> i32;
+    fn QueryFullProcessImageNameW(
+        h: *mut c_void,
+        flags: u32,
+        name: *mut u16,
+        size: *mut u32,
+    ) -> i32;
     fn CloseHandle(h: *mut c_void) -> i32;
     fn GetLastError() -> u32;
 }
@@ -183,13 +205,20 @@ pub fn argumento(a: &str) -> String {
 fn interpretar_resposta(texto: &str) -> Result<u32, (u32, String)> {
     let mut linhas = texto.trim_end_matches('\0').splitn(3, '\n');
     let hex = |s: &str| u32::from_str_radix(s.trim().trim_start_matches("0x"), 16).ok();
-    let codigo = linhas.next().and_then(hex).ok_or((u32::MAX, texto.to_string()))?;
+    let codigo = linhas
+        .next()
+        .and_then(hex)
+        .ok_or((u32::MAX, texto.to_string()))?;
     let linha2 = linhas.next().unwrap_or_default().trim().to_string();
     let linha3 = linhas.next().unwrap_or_default().trim().to_string();
     if codigo == 0 {
         return hex(&linha2).ok_or((u32::MAX, texto.to_string()));
     }
-    let msg = if linha3.is_empty() { linha2 } else { format!("{linha3} ({linha2})") };
+    let msg = if linha3.is_empty() {
+        linha2
+    } else {
+        format!("{linha3} ({linha2})")
+    };
     Err((codigo, msg))
 }
 
@@ -198,7 +227,15 @@ fn interpretar_resposta(texto: &str) -> Result<u32, (u32, String)> {
 pub fn iniciar(workdir: &Path, opcoes: &str) -> Result<Processo, Falha> {
     let nome = wide(PIPE);
     let mut pipe = unsafe {
-        CreateFileW(nome.as_ptr(), GENERIC_READ | GENERIC_WRITE, 0, ptr::null_mut(), OPEN_EXISTING, 0, ptr::null_mut())
+        CreateFileW(
+            nome.as_ptr(),
+            GENERIC_READ | GENERIC_WRITE,
+            0,
+            ptr::null_mut(),
+            OPEN_EXISTING,
+            0,
+            ptr::null_mut(),
+        )
     };
     if pipe as isize == INVALID_HANDLE {
         match unsafe { GetLastError() } {
@@ -206,7 +243,15 @@ pub fn iniciar(workdir: &Path, opcoes: &str) -> Result<Processo, Falha> {
                 // another connection is talking to the service right now
                 unsafe { WaitNamedPipeW(nome.as_ptr(), 5000) };
                 pipe = unsafe {
-                    CreateFileW(nome.as_ptr(), GENERIC_READ | GENERIC_WRITE, 0, ptr::null_mut(), OPEN_EXISTING, 0, ptr::null_mut())
+                    CreateFileW(
+                        nome.as_ptr(),
+                        GENERIC_READ | GENERIC_WRITE,
+                        0,
+                        ptr::null_mut(),
+                        OPEN_EXISTING,
+                        0,
+                        ptr::null_mut(),
+                    )
                 };
             }
             ERROR_FILE_NOT_FOUND => return Err(Falha::Indisponivel),
@@ -228,19 +273,35 @@ pub fn iniciar(workdir: &Path, opcoes: &str) -> Result<Processo, Falha> {
     dados.push(0);
     let mut escritos = 0u32;
     let ok = unsafe {
-        WriteFile(pipe.0, dados.as_ptr() as *const c_void, (dados.len() * 2) as u32, &mut escritos, ptr::null_mut())
+        WriteFile(
+            pipe.0,
+            dados.as_ptr() as *const c_void,
+            (dados.len() * 2) as u32,
+            &mut escritos,
+            ptr::null_mut(),
+        )
     };
     if ok == 0 {
-        return Err(Falha::Outra(format!("WriteFile: {}", unsafe { GetLastError() })));
+        return Err(Falha::Outra(format!("WriteFile: {}", unsafe {
+            GetLastError()
+        })));
     }
 
     let mut buf = [0u16; 2048];
     let mut lidos = 0u32;
     let ok = unsafe {
-        ReadFile(pipe.0, buf.as_mut_ptr() as *mut c_void, (buf.len() * 2) as u32, &mut lidos, ptr::null_mut())
+        ReadFile(
+            pipe.0,
+            buf.as_mut_ptr() as *mut c_void,
+            (buf.len() * 2) as u32,
+            &mut lidos,
+            ptr::null_mut(),
+        )
     };
     if ok == 0 && unsafe { GetLastError() } != ERROR_MORE_DATA {
-        return Err(Falha::Outra(format!("ReadFile: {}", unsafe { GetLastError() })));
+        return Err(Falha::Outra(format!("ReadFile: {}", unsafe {
+            GetLastError()
+        })));
     }
     let resposta = String::from_utf16_lossy(&buf[..(lidos as usize / 2)]);
     match interpretar_resposta(&resposta) {
@@ -248,7 +309,11 @@ pub fn iniciar(workdir: &Path, opcoes: &str) -> Result<Processo, Falha> {
             // exactly the rights the service grants the user on that process
             let acesso = SYNCHRONIZE | PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION;
             let processo = Handle(unsafe { OpenProcess(acesso, 0, pid) });
-            Ok(Processo { pid, processo, _pipe: pipe })
+            Ok(Processo {
+                pid,
+                processo,
+                _pipe: pipe,
+            })
         }
         Err((_, msg)) if msg.contains("admin approval") => Err(Falha::NaoAutorizado(msg)),
         Err((codigo, msg)) => Err(Falha::Outra(format!("0x{codigo:08x}: {msg}"))),
@@ -259,7 +324,13 @@ pub fn iniciar(workdir: &Path, opcoes: &str) -> Result<Processo, Falha> {
 /// killed by the Task Manager): without the app, nobody would answer its
 /// password prompts. Checks the image name, since PIDs are reused.
 pub fn encerrar_se_openvpn(pid: u32) -> bool {
-    let h = Handle(unsafe { OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) });
+    let h = Handle(unsafe {
+        OpenProcess(
+            PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION,
+            0,
+            pid,
+        )
+    });
     if h.0.is_null() {
         return false;
     }
@@ -346,8 +417,19 @@ pub fn adicionar_ao_grupo(usuario: &str) -> i32 {
     }
     #[link(name = "netapi32")]
     extern "system" {
-        fn NetLocalGroupAdd(server: *const u16, level: u32, buf: *const u8, parm_err: *mut u32) -> u32;
-        fn NetLocalGroupAddMembers(server: *const u16, group: *const u16, level: u32, buf: *const u8, total: u32) -> u32;
+        fn NetLocalGroupAdd(
+            server: *const u16,
+            level: u32,
+            buf: *const u8,
+            parm_err: *mut u32,
+        ) -> u32;
+        fn NetLocalGroupAddMembers(
+            server: *const u16,
+            group: *const u16,
+            level: u32,
+            buf: *const u8,
+            total: u32,
+        ) -> u32;
     }
     const NERR_SUCCESS: u32 = 0;
     const NERR_GROUP_EXISTS: u32 = 2223;
@@ -356,15 +438,35 @@ pub fn adicionar_ao_grupo(usuario: &str) -> i32 {
 
     let grupo = wide(&grupo_autorizado());
     let comentario = wide("Users allowed to run any OpenVPN configuration");
-    let info = LocalGroupInfo1 { name: grupo.as_ptr(), comment: comentario.as_ptr() };
+    let info = LocalGroupInfo1 {
+        name: grupo.as_ptr(),
+        comment: comentario.as_ptr(),
+    };
     let mut erro_parm = 0u32;
-    let r = unsafe { NetLocalGroupAdd(ptr::null(), 1, &info as *const _ as *const u8, &mut erro_parm) };
+    let r = unsafe {
+        NetLocalGroupAdd(
+            ptr::null(),
+            1,
+            &info as *const _ as *const u8,
+            &mut erro_parm,
+        )
+    };
     if !matches!(r, NERR_SUCCESS | NERR_GROUP_EXISTS | ERROR_ALIAS_EXISTS) {
         return r as i32;
     }
     let nome = wide(usuario);
-    let membro = LocalGroupMembersInfo3 { domain_and_name: nome.as_ptr() };
-    let r = unsafe { NetLocalGroupAddMembers(ptr::null(), grupo.as_ptr(), 3, &membro as *const _ as *const u8, 1) };
+    let membro = LocalGroupMembersInfo3 {
+        domain_and_name: nome.as_ptr(),
+    };
+    let r = unsafe {
+        NetLocalGroupAddMembers(
+            ptr::null(),
+            grupo.as_ptr(),
+            3,
+            &membro as *const _ as *const u8,
+            1,
+        )
+    };
     match r {
         NERR_SUCCESS | ERROR_MEMBER_IN_ALIAS => 0,
         e => e as i32,
@@ -378,7 +480,10 @@ pub fn criar_adaptador(openvpn: &Path, hwid: &str) -> Result<(), String> {
     let tapctl = openvpn.with_file_name("tapctl.exe");
     match super::elevate::executar_como_admin(&tapctl, &format!("create --hwid {hwid}"))? {
         0 => Ok(()),
-        codigo => Err(trf!("o tapctl falhou (código {codigo})", "tapctl failed (code {codigo})")),
+        codigo => Err(trf!(
+            "o tapctl falhou (código {codigo})",
+            "tapctl failed (code {codigo})"
+        )),
     }
 }
 
@@ -458,7 +563,10 @@ mod tests {
 
     #[test]
     fn le_a_resposta_do_servico() {
-        assert_eq!(interpretar_resposta("0x00000000\n0x00001a2b\nProcess ID"), Ok(0x1a2b));
+        assert_eq!(
+            interpretar_resposta("0x00000000\n0x00001a2b\nProcess ID"),
+            Ok(0x1a2b)
+        );
         let erro = interpretar_resposta(
             "0x20000000\nYou have specified an option (--auth-nocache) that may be used only with \
              admin approval.\nGetStartupData",

@@ -75,9 +75,8 @@ fn dpapi(data: &[u8], protect: bool) -> Option<Vec<u8>> {
     if ok == 0 || blob_out.pb_data.is_null() {
         return None;
     }
-    let out = unsafe {
-        std::slice::from_raw_parts(blob_out.pb_data, blob_out.cb_data as usize).to_vec()
-    };
+    let out =
+        unsafe { std::slice::from_raw_parts(blob_out.pb_data, blob_out.cb_data as usize).to_vec() };
     unsafe { LocalFree(blob_out.pb_data as *mut c_void) };
     Some(out)
 }

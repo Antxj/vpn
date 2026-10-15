@@ -206,7 +206,10 @@ fn ajudante_atual() -> bool {
 }
 
 fn usuario_no_grupo(usuario: &str, grupo: &str) -> bool {
-    let (Ok(u), Ok(g)) = (std::ffi::CString::new(usuario), std::ffi::CString::new(grupo)) else {
+    let (Ok(u), Ok(g)) = (
+        std::ffi::CString::new(usuario),
+        std::ffi::CString::new(grupo),
+    ) else {
         return false;
     };
     unsafe {
@@ -237,11 +240,13 @@ pub fn iniciar(workdir: &Path, opcoes: &str) -> Result<Processo, Falha> {
         return Err(Falha::Indisponivel);
     }
     if !autorizado() {
-        return Err(Falha::NaoAutorizado(tr!(
-            "Esta conta ainda não foi autorizada a iniciar o OpenVPN.",
-            "This account is not authorized to start OpenVPN yet."
-        )
-        .into()));
+        return Err(Falha::NaoAutorizado(
+            tr!(
+                "Esta conta ainda não foi autorizada a iniciar o OpenVPN.",
+                "This account is not authorized to start OpenVPN yet."
+            )
+            .into(),
+        ));
     }
     let mut args = dividir(opcoes);
     let mut log = None;
@@ -266,8 +271,14 @@ pub fn iniciar(workdir: &Path, opcoes: &str) -> Result<Processo, Falha> {
     let arquivo = log.and_then(|p| std::fs::File::create(p).ok());
     let saida = std::sync::Arc::new(Mutex::new(arquivo));
     for leitor in [
-        filho.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
-        filho.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
+        filho
+            .stdout
+            .take()
+            .map(|s| Box::new(s) as Box<dyn Read + Send>),
+        filho
+            .stderr
+            .take()
+            .map(|s| Box::new(s) as Box<dyn Read + Send>),
     ]
     .into_iter()
     .flatten()
@@ -303,7 +314,9 @@ pub fn usuario_atual() -> String {
     unsafe {
         let pw = libc::getpwuid(libc::getuid());
         if !pw.is_null() {
-            return std::ffi::CStr::from_ptr((*pw).pw_name).to_string_lossy().into_owned();
+            return std::ffi::CStr::from_ptr((*pw).pw_name)
+                .to_string_lossy()
+                .into_owned();
         }
     }
     std::env::var("USER").unwrap_or_default()
@@ -348,7 +361,9 @@ fn chamador() -> Option<(u32, String)> {
         if pw.is_null() {
             return None;
         }
-        std::ffi::CStr::from_ptr((*pw).pw_name).to_string_lossy().into_owned()
+        std::ffi::CStr::from_ptr((*pw).pw_name)
+            .to_string_lossy()
+            .into_owned()
     };
     Some((uid, nome))
 }
@@ -359,7 +374,11 @@ fn gravar_root(caminho: &str, conteudo: &[u8], modo: u32) -> std::io::Result<()>
     }
     let temp = format!("{caminho}.tmp");
     let _ = std::fs::remove_file(&temp);
-    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(modo).open(&temp)?;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(modo)
+        .open(&temp)?;
     f.write_all(conteudo)?;
     f.sync_all()?;
     std::fs::set_permissions(&temp, std::fs::Permissions::from_mode(modo))?;
@@ -408,7 +427,10 @@ fn regra_pkla() -> String {
 }
 
 fn executar(programa: &str, args: &[&str]) -> bool {
-    Command::new(programa).args(args).status().is_ok_and(|s| s.success())
+    Command::new(programa)
+        .args(args)
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 /// Root side of `autorizar_usuario_atual` (run through pkexec): installs the
@@ -432,7 +454,9 @@ pub fn adicionar_ao_grupo(usuario: &str) -> i32 {
     if !executar("groupadd", &["-f", GRUPO]) && !executar("/usr/sbin/groupadd", &["-f", GRUPO]) {
         return 6;
     }
-    if !executar("usermod", &["-aG", GRUPO, usuario]) && !executar("/usr/sbin/usermod", &["-aG", GRUPO, usuario]) {
+    if !executar("usermod", &["-aG", GRUPO, usuario])
+        && !executar("/usr/sbin/usermod", &["-aG", GRUPO, usuario])
+    {
         return 7;
     }
     if gravar_root(POLITICA, politica_xml().as_bytes(), 0o644).is_err() {
@@ -471,7 +495,9 @@ fn validar_opcoes(args: &[String]) -> Result<Vec<String>, String> {
                 1
             }
             "--management" => {
-                let porta_ok = valores.get(1).is_some_and(|p| numero(p) && p.parse::<u16>().is_ok());
+                let porta_ok = valores
+                    .get(1)
+                    .is_some_and(|p| numero(p) && p.parse::<u16>().is_ok());
                 if valores.first().map(String::as_str) != Some("127.0.0.1") || !porta_ok {
                     return Err("--management".into());
                 }
@@ -517,19 +543,57 @@ fn validar_opcoes(args: &[String]) -> Result<Vec<String>, String> {
 /// Directives a .ovpn may not have when run as root: they run programs,
 /// load code, write files or read the password from a file.
 const PROIBIDAS: &[&str] = &[
-    "plugin", "iproute", "config", "script-security", "up", "down", "route-up", "route-pre-down",
-    "ipchange", "learn-address", "client-connect", "client-disconnect", "tls-verify",
-    "auth-user-pass-verify", "tls-export-cert", "log", "log-append", "status", "writepid",
-    "daemon", "chroot", "cd", "tmp-dir", "dev-node", "replay-persist", "ifconfig-pool-persist",
-    "syslog", "askpass", "http-proxy-user-pass", "management", "management-client-user",
-    "management-client-group", "management-hold", "management-external-key",
-    "management-external-cert", "dns-updown",
+    "plugin",
+    "iproute",
+    "config",
+    "script-security",
+    "up",
+    "down",
+    "route-up",
+    "route-pre-down",
+    "ipchange",
+    "learn-address",
+    "client-connect",
+    "client-disconnect",
+    "tls-verify",
+    "auth-user-pass-verify",
+    "tls-export-cert",
+    "log",
+    "log-append",
+    "status",
+    "writepid",
+    "daemon",
+    "chroot",
+    "cd",
+    "tmp-dir",
+    "dev-node",
+    "replay-persist",
+    "ifconfig-pool-persist",
+    "syslog",
+    "askpass",
+    "http-proxy-user-pass",
+    "management",
+    "management-client-user",
+    "management-client-group",
+    "management-hold",
+    "management-external-key",
+    "management-external-cert",
+    "dns-updown",
 ];
 
 /// Directives whose (first) argument is a file read by openvpn.
 const COM_ARQUIVO: &[&str] = &[
-    "ca", "cert", "key", "pkcs12", "tls-auth", "tls-crypt", "tls-crypt-v2", "dh", "extra-certs",
-    "secret", "crl-verify",
+    "ca",
+    "cert",
+    "key",
+    "pkcs12",
+    "tls-auth",
+    "tls-crypt",
+    "tls-crypt-v2",
+    "dh",
+    "extra-certs",
+    "secret",
+    "crl-verify",
 ];
 
 /// Checks the .ovpn text. Returns the files it references (relative paths).
@@ -571,8 +635,12 @@ fn validar_ovpn(texto: &str) -> Result<Vec<String>, String> {
             let arquivo = partes.get(1).map(|a| a.trim_matches('"')).unwrap_or("");
             if !arquivo.is_empty() && arquivo != "[inline]" {
                 let p = Path::new(arquivo);
-                if p.as_os_str().is_empty() || !p.components().all(|c| matches!(c, Component::Normal(_))) {
-                    return Err(format!("{diretiva}: file outside the .ovpn folder ({arquivo})"));
+                if p.as_os_str().is_empty()
+                    || !p.components().all(|c| matches!(c, Component::Normal(_)))
+                {
+                    return Err(format!(
+                        "{diretiva}: file outside the .ovpn folder ({arquivo})"
+                    ));
                 }
                 arquivos.push(arquivo.to_string());
             }
@@ -583,7 +651,8 @@ fn validar_ovpn(texto: &str) -> Result<Vec<String>, String> {
 
 /// A file the user owns (or root), not a symbolic link, inside `pasta`.
 fn arquivo_do_usuario(caminho: &Path, pasta: &Path, uid: u32) -> Result<(), String> {
-    let meta = std::fs::symlink_metadata(caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
+    let meta =
+        std::fs::symlink_metadata(caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
     if !meta.file_type().is_file() {
         return Err(format!("{}: not a regular file", caminho.display()));
     }
@@ -598,16 +667,23 @@ fn arquivo_do_usuario(caminho: &Path, pasta: &Path, uid: u32) -> Result<(), Stri
 }
 
 fn openvpn_do_sistema() -> Option<&'static str> {
-    ["/usr/sbin/openvpn", "/usr/bin/openvpn", "/usr/local/sbin/openvpn"]
-        .into_iter()
-        .find(|p| std::fs::metadata(p).is_ok_and(|m| m.uid() == 0 && m.mode() & 0o022 == 0))
+    [
+        "/usr/sbin/openvpn",
+        "/usr/bin/openvpn",
+        "/usr/local/sbin/openvpn",
+    ]
+    .into_iter()
+    .find(|p| std::fs::metadata(p).is_ok_and(|m| m.uid() == 0 && m.mode() & 0o022 == 0))
 }
 
 /// DNS of the VPN: the distribution's script for systemd-resolved, when installed.
 fn script_de_dns() -> Option<&'static str> {
-    ["/etc/openvpn/update-systemd-resolved", "/etc/openvpn/scripts/update-systemd-resolved"]
-        .into_iter()
-        .find(|p| std::fs::metadata(p).is_ok_and(|m| m.uid() == 0 && m.mode() & 0o022 == 0))
+    [
+        "/etc/openvpn/update-systemd-resolved",
+        "/etc/openvpn/scripts/update-systemd-resolved",
+    ]
+    .into_iter()
+    .find(|p| std::fs::metadata(p).is_ok_and(|m| m.uid() == 0 && m.mode() & 0o022 == 0))
 }
 
 /// The helper itself (as root, through pkexec). Returns the exit code.
@@ -629,10 +705,19 @@ fn helper(args: &[String]) -> Result<i32, String> {
     let (uid, _) = chamador().ok_or("PKEXEC_UID")?;
     let (pasta, opcoes) = args.split_first().ok_or("missing folder")?;
     let opcoes = validar_opcoes(opcoes)?;
-    let i = opcoes.iter().position(|a| a == "--config").ok_or("--config")?;
+    let i = opcoes
+        .iter()
+        .position(|a| a == "--config")
+        .ok_or("--config")?;
     let config = PathBuf::from(&opcoes[i + 1]);
     let pasta = Path::new(pasta).canonicalize().map_err(|e| e.to_string())?;
-    if config.parent().map(Path::new).and_then(|p| p.canonicalize().ok()).as_deref() != Some(pasta.as_path()) {
+    if config
+        .parent()
+        .map(Path::new)
+        .and_then(|p| p.canonicalize().ok())
+        .as_deref()
+        != Some(pasta.as_path())
+    {
         return Err("the .ovpn must be in the given folder".into());
     }
     arquivo_do_usuario(&config, &pasta, uid)?;
@@ -666,7 +751,15 @@ fn helper(args: &[String]) -> Result<i32, String> {
     }
     match script_de_dns() {
         Some(script) => {
-            cmd.args(["--script-security", "2", "--up", script, "--down", script, "--down-pre"]);
+            cmd.args([
+                "--script-security",
+                "2",
+                "--up",
+                script,
+                "--down",
+                script,
+                "--down-pre",
+            ]);
         }
         None => {
             cmd.args(["--script-security", "1"]);
@@ -742,16 +835,26 @@ mod tests {
 
     #[test]
     fn argumentos_vao_e_voltam() {
-        for a in ["simples", "/home/maria/Minhas VPNs/x.ovpn", "aspas \"e\" barra \\ fim", ""] {
-            assert_eq!(dividir(&format!("--config {}", argumento(a))), ["--config", a]);
+        for a in [
+            "simples",
+            "/home/maria/Minhas VPNs/x.ovpn",
+            "aspas \"e\" barra \\ fim",
+            "",
+        ] {
+            assert_eq!(
+                dividir(&format!("--config {}", argumento(a))),
+                ["--config", a]
+            );
         }
     }
 
     #[test]
     fn so_as_opcoes_do_app() {
-        let ok = v("--config /home/m/a.ovpn --management 127.0.0.1 7505 --management-query-passwords \
+        let ok = v(
+            "--config /home/m/a.ovpn --management 127.0.0.1 7505 --management-query-passwords \
                     --auth-retry interact --auth-nocache --connect-retry 5 \
-                    --route 200.1.2.3 255.255.255.255 net_gateway --disable-dco");
+                    --route 200.1.2.3 255.255.255.255 net_gateway --disable-dco",
+        );
         assert_eq!(validar_opcoes(&ok).unwrap(), ok);
         for ruim in [
             "--config a --config b",
@@ -787,7 +890,10 @@ mod tests {
             "http-proxy p 3128 /root/senha",
             "--up /tmp/x",
         ] {
-            assert!(validar_ovpn(&format!("client\n{ruim}\n")).is_err(), "{ruim}");
+            assert!(
+                validar_ovpn(&format!("client\n{ruim}\n")).is_err(),
+                "{ruim}"
+            );
         }
     }
 

@@ -52,17 +52,22 @@ fn install() -> Result<bool, String> {
     }
 
     let msi_path = std::env::temp_dir().join(format!("vpn-openvpn-{MSI_VERSION}.msi"));
-    std::fs::write(&msi_path, MSI)
-        .map_err(|e| trf!("Não consegui gravar o instalador em disco: {e}", "Could not write the installer to disk: {e}"))?;
+    std::fs::write(&msi_path, MSI).map_err(|e| {
+        trf!(
+            "Não consegui gravar o instalador em disco: {e}",
+            "Could not write the installer to disk: {e}"
+        )
+    })?;
 
     let log = log_path();
     let _ = std::fs::create_dir_all(crate::settings::app_dir());
 
     // the app runs as a regular user: Windows asks for administrator
     // permission (UAC) for the installation only
-    let msiexec = PathBuf::from(std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into()))
-        .join("System32")
-        .join("msiexec.exe");
+    let msiexec =
+        PathBuf::from(std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into()))
+            .join("System32")
+            .join("msiexec.exe");
     let params = format!(
         "/i {} /qn /norestart {FEATURES} /l*v {}",
         super::service::argumento(&msi_path.to_string_lossy()),
@@ -75,7 +80,11 @@ fn install() -> Result<bool, String> {
     match resultado? {
         0 => Ok(false),
         ERROR_SUCCESS_REBOOT_REQUIRED => Ok(true),
-        1602 => Err(tr!("A instalação foi cancelada.", "The installation was cancelled.").into()),
+        1602 => Err(tr!(
+            "A instalação foi cancelada.",
+            "The installation was cancelled."
+        )
+        .into()),
         code => Err(trf!(
             "A instalação falhou (código {code}).\nDetalhes em:\n{}",
             "The installation failed (code {code}).\nDetails in:\n{}",
@@ -83,7 +92,6 @@ fn install() -> Result<bool, String> {
         )),
     }
 }
-
 
 #[cfg(test)]
 mod tests {

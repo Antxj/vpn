@@ -77,9 +77,8 @@ pub fn assinante(caminho: &Path) -> Option<String> {
 
     let mut acao = WINTRUST_ACTION_GENERIC_VERIFY_V2;
     let sem_janela = -1isize as *mut c_void; // INVALID_HANDLE_VALUE: never shows UI
-    let resultado = unsafe {
-        WinVerifyTrust(sem_janela, &mut acao, &mut dados as *mut _ as *mut c_void)
-    };
+    let resultado =
+        unsafe { WinVerifyTrust(sem_janela, &mut acao, &mut dados as *mut _ as *mut c_void) };
 
     let mut nome = None;
     if resultado == 0 {
@@ -134,7 +133,11 @@ fn ultimo_erro() -> u32 {
 
 /// Simple GET (follows HTTPS redirects, like the one of the asset
 /// downloads). `progresso` receives the bytes read so far.
-pub fn http_get(url: &str, limite: usize, progresso: &mut dyn FnMut(u64)) -> Result<Vec<u8>, ErroHttp> {
+pub fn http_get(
+    url: &str,
+    limite: usize,
+    progresso: &mut dyn FnMut(u64),
+) -> Result<Vec<u8>, ErroHttp> {
     use windows_sys::Win32::Networking::WinHttp::*;
 
     let url_w: Vec<u16> = url.encode_utf16().collect();
@@ -165,7 +168,9 @@ pub fn http_get(url: &str, limite: usize, progresso: &mut dyn FnMut(u64)) -> Res
     caminho.push(0);
     let https = partes.nScheme == WINHTTP_INTERNET_SCHEME_HTTPS;
 
-    let agente = super::single::wide(&format!("VPN/{VERSAO_ATUAL} (+https://github.com/{REPOSITORIO})"));
+    let agente = super::single::wide(&format!(
+        "VPN/{VERSAO_ATUAL} (+https://github.com/{REPOSITORIO})"
+    ));
     let sessao = Handle(unsafe {
         WinHttpOpen(
             agente.as_ptr(),
@@ -204,7 +209,15 @@ pub fn http_get(url: &str, limite: usize, progresso: &mut dyn FnMut(u64)) -> Res
          X-GitHub-Api-Version: 2022-11-28\r\n",
     );
     let ok = unsafe {
-        WinHttpSendRequest(pedido.0, cabecalhos.as_ptr(), u32::MAX, ptr::null(), 0, 0, 0) != 0
+        WinHttpSendRequest(
+            pedido.0,
+            cabecalhos.as_ptr(),
+            u32::MAX,
+            ptr::null(),
+            0,
+            0,
+            0,
+        ) != 0
             && WinHttpReceiveResponse(pedido.0, ptr::null_mut()) != 0
     };
     if !ok {
@@ -261,13 +274,16 @@ mod tests {
     #[test]
     fn assinatura_digital() {
         // unsigned file
-        let p = std::env::temp_dir().join(format!("vpn-teste-assinatura-{}.exe", std::process::id()));
+        let p =
+            std::env::temp_dir().join(format!("vpn-teste-assinatura-{}.exe", std::process::id()));
         std::fs::write(&p, b"MZ nada assinado").unwrap();
         assert_eq!(assinante(&p), None);
         let _ = std::fs::remove_file(&p);
 
         // the official MSI embedded in the release is signed by OpenVPN Inc.
-        let msi = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets").join("openvpn.msi");
+        let msi = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("assets")
+            .join("openvpn.msi");
         if msi.exists() {
             let nome = assinante(&msi).expect("the OpenVPN MSI should be signed");
             assert!(nome.contains("OpenVPN"), "{nome}");

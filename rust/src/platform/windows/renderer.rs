@@ -98,14 +98,21 @@ pub fn escolher(forcar_dx12: bool) -> (Desenho, &'static str) {
     if forcar_dx12 {
         return (
             Desenho::DirectX12,
-            tr!("o OpenGL não abriu a janela", "OpenGL could not open the window"),
+            tr!(
+                "o OpenGL não abriu a janela",
+                "OpenGL could not open the window"
+            ),
         );
     }
-    let falhou = std::fs::read_to_string(marcador()).is_ok_and(|v| v.trim() == crate::update::VERSAO_ATUAL);
+    let falhou =
+        std::fs::read_to_string(marcador()).is_ok_and(|v| v.trim() == crate::update::VERSAO_ATUAL);
     if falhou {
         return (
             Desenho::DirectX12,
-            tr!("o OpenGL já falhou neste computador", "OpenGL already failed on this computer"),
+            tr!(
+                "o OpenGL já falhou neste computador",
+                "OpenGL already failed on this computer"
+            ),
         );
     }
     // VPN_RENDERER=opengl|dx12 forces one (tests)
@@ -115,13 +122,22 @@ pub fn escolher(forcar_dx12: bool) -> (Desenho, &'static str) {
         _ => {}
     }
     if sessao_remota() {
-        return (Desenho::DirectX12, tr!("sessão de área de trabalho remota", "remote desktop session"));
+        return (
+            Desenho::DirectX12,
+            tr!(
+                "sessão de área de trabalho remota",
+                "remote desktop session"
+            ),
+        );
     }
     match versao_do_opengl() {
         Some((versao, placa)) if opengl_suficiente(&versao, &placa) => (Desenho::OpenGl, ""),
         _ => (
             Desenho::DirectX12,
-            tr!("sem OpenGL do driver de vídeo", "no OpenGL from the video driver"),
+            tr!(
+                "sem OpenGL do driver de vídeo",
+                "no OpenGL from the video driver"
+            ),
         ),
     }
 }
@@ -218,7 +234,11 @@ fn versao_do_opengl() -> Option<(String, String)> {
 /// DirectX 12 in remote desktop sessions, VMs and PCs with only Windows'
 /// software OpenGL 1.1. `_oculto` (started minimized): eframe ignores a
 /// hidden window on Windows; desktop.rs cloaks it instead.
-pub fn opcoes(desenho: Desenho, viewport: eframe::egui::ViewportBuilder, _oculto: bool) -> eframe::NativeOptions {
+pub fn opcoes(
+    desenho: Desenho,
+    viewport: eframe::egui::ViewportBuilder,
+    _oculto: bool,
+) -> eframe::NativeOptions {
     eframe::NativeOptions {
         viewport,
         renderer: desenho.eframe(),
@@ -239,8 +259,14 @@ mod tests {
 
     #[test]
     fn so_opengl_de_driver_a_partir_do_2() {
-        assert!(opengl_suficiente("4.6.0 NVIDIA 560.94", "NVIDIA GeForce RTX 3060/PCIe/SSE2"));
-        assert!(opengl_suficiente("3.3.0 - Build 31.0.101.2111", "Intel(R) UHD Graphics 620"));
+        assert!(opengl_suficiente(
+            "4.6.0 NVIDIA 560.94",
+            "NVIDIA GeForce RTX 3060/PCIe/SSE2"
+        ));
+        assert!(opengl_suficiente(
+            "3.3.0 - Build 31.0.101.2111",
+            "Intel(R) UHD Graphics 620"
+        ));
         assert!(opengl_suficiente("2.1", "Some driver"));
         // Windows' software OpenGL (remote desktop, VMs, no video driver)
         assert!(!opengl_suficiente("1.1.0", "GDI Generic"));
@@ -252,6 +278,9 @@ mod tests {
     fn opengl_deste_pc_e_lido() {
         // any Windows has OpenGL 1.1 at least: the probe itself must work
         let (versao, placa) = versao_do_opengl().expect("probe failed");
-        assert!(!versao.is_empty() && !placa.is_empty(), "{versao:?} {placa:?}");
+        assert!(
+            !versao.is_empty() && !placa.is_empty(),
+            "{versao:?} {placa:?}"
+        );
     }
 }

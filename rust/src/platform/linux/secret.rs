@@ -27,6 +27,15 @@ const EM_ARQUIVO: u8 = b'F';
 /// Key already obtained in this run (the keyring is asked only once).
 static CHAVE: Mutex<Option<(u8, [u8; 32])>> = Mutex::new(None);
 
+/// Unit tests never touch the user's keyring or key file (a locked keyring
+/// would hang them, and they would leave entries behind): they use a key
+/// kept in memory. The exception is the harness that writes real sample
+/// accounts (settings.rs, VPN_EXEMPLO_JSON).
+fn chave_de_teste() -> Option<(u8, [u8; 32])> {
+    (cfg!(test) && std::env::var_os("VPN_EXEMPLO_JSON").is_none())
+        .then_some((EM_ARQUIVO, [7u8; 32]))
+}
+
 fn usuario_do_chaveiro() -> String {
     match std::env::var("VPN_INSTANCE") {
         Ok(s) if !s.is_empty() => format!("contas-{s}"),
@@ -62,13 +71,16 @@ fn nova_chave() -> Option<[u8; 32]> {
 
 fn chaveiro() -> Option<keyring::Entry> {
     if std::env::var_os("VPN_SEM_CHAVEIRO").is_some() {
-        return None; // tests: the file fallback
+        return None; // manual tests: the file fallback
     }
     keyring::Entry::new(SERVICO, &usuario_do_chaveiro()).ok()
 }
 
 /// Key stored at `origem`; creates it when `criar` (only for a new file).
 fn chave_de(origem: u8, criar: bool) -> Option<[u8; 32]> {
+    if let Some((o, k)) = chave_de_teste() {
+        return (o == origem).then_some(k);
+    }
     if let Some((o, k)) = *CHAVE.lock().unwrap() {
         if o == origem {
             return Some(k);
@@ -132,6 +144,9 @@ fn chave_de(origem: u8, criar: bool) -> Option<[u8; 32]> {
 
 /// Where the key of a NEW file goes: the keyring when there is one.
 fn origem_para_gravar() -> (u8, [u8; 32]) {
+    if let Some(teste) = chave_de_teste() {
+        return teste;
+    }
     if let Some((o, k)) = *CHAVE.lock().unwrap() {
         return (o, k);
     }
@@ -149,7 +164,10 @@ pub fn protect(dados: &[u8]) -> Option<Vec<u8>> {
     }
     let mut nonce = [0u8; 12];
     getrandom::fill(&mut nonce).ok()?;
-    let cifrado = Aes256Gcm::new_from_slice(&k).ok()?.encrypt(&Nonce::from(nonce), dados).ok()?;
+    let cifrado = Aes256Gcm::new_from_slice(&k)
+        .ok()?
+        .encrypt(&Nonce::from(nonce), dados)
+        .ok()?;
     let mut saida = Vec::with_capacity(MAGICO.len() + 1 + 12 + cifrado.len());
     saida.extend_from_slice(MAGICO);
     saida.push(origem);
@@ -166,5 +184,8 @@ pub fn unprotect(dados: &[u8]) -> Option<Vec<u8>> {
     let origem = dados[MAGICO.len()];
     let k = chave_de(origem, false)?;
     let nonce: [u8; 12] = dados[MAGICO.len() + 1..cabecalho].try_into().ok()?;
-    Aes256Gcm::new_from_slice(&k).ok()?.decrypt(&Nonce::from(nonce), &dados[cabecalho..]).ok()
+    Aes256Gcm::new_from_slice(&k)
+        .ok()?
+        .decrypt(&Nonce::from(nonce), &dados[cabecalho..])
+        .ok()
 }

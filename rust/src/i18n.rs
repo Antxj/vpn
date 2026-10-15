@@ -73,7 +73,9 @@ pub fn pt() -> bool {
 /// Applies the user's choice (None = automatic from Windows).
 /// VPN_LANGUAGE=pt|en forces a language (documentation screenshots).
 pub fn aplicar(escolha: Option<Idioma>) {
-    let forcado = std::env::var("VPN_LANGUAGE").ok().and_then(|c| Idioma::do_codigo(&c));
+    let forcado = std::env::var("VPN_LANGUAGE")
+        .ok()
+        .and_then(|c| Idioma::do_codigo(&c));
     let idioma = forcado.or(escolha).unwrap_or_else(do_sistema);
     PORTUGUES.store(idioma == Idioma::Portugues, Ordering::Relaxed);
 }

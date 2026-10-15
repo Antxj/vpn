@@ -58,7 +58,10 @@ fn segredos(contas: &[Conta]) -> Vec<(String, &'static str)> {
     if let Ok(perfil) = std::env::var("USERPROFILE") {
         lista.push((perfil, "%USERPROFILE%"));
     }
-    for (var, marca) in [("USERNAME", "<usuario-windows>"), ("COMPUTERNAME", "<computador>")] {
+    for (var, marca) in [
+        ("USERNAME", "<usuario-windows>"),
+        ("COMPUTERNAME", "<computador>"),
+    ] {
         if let Ok(v) = std::env::var(var) {
             lista.push((v, marca));
         }
@@ -127,20 +130,32 @@ mod tests {
         };
         let entradas = [
             entrada("Trabalho", "AUTH: user Maria.Silva rejected"),
-            entrada("Trabalho", "password Segredo#2026 seed GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"),
+            entrada(
+                "Trabalho",
+                "password Segredo#2026 seed GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+            ),
             entrada("", "app message"),
         ];
         let todas = texto_do_log(&entradas, None, std::slice::from_ref(&conta));
         assert!(todas.starts_with("VPN "), "{todas}");
-        assert!(todas.contains("10:00:00 [Trabalho] AUTH: user <usuario> rejected"), "{todas}");
+        assert!(
+            todas.contains("10:00:00 [Trabalho] AUTH: user <usuario> rejected"),
+            "{todas}"
+        );
         assert!(todas.contains("password <senha> seed <seed>"), "{todas}");
         assert!(todas.contains("10:00:00 app message"), "{todas}");
         for segredo in ["maria", "Segredo#2026", "GEZDGNBV"] {
-            assert!(!todas.to_lowercase().contains(&segredo.to_lowercase()), "{segredo}: {todas}");
+            assert!(
+                !todas.to_lowercase().contains(&segredo.to_lowercase()),
+                "{segredo}: {todas}"
+            );
         }
         // one account's tab: no name in front of each line
         let uma = texto_do_log(&entradas[..1], Some(&conta), std::slice::from_ref(&conta));
-        assert!(uma.contains("10:00:00 AUTH: user <usuario> rejected"), "{uma}");
+        assert!(
+            uma.contains("10:00:00 AUTH: user <usuario> rejected"),
+            "{uma}"
+        );
     }
 
     #[test]

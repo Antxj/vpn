@@ -298,7 +298,10 @@ pub fn hora_local() -> String {
 /// "YYYY-MM-DD HH:MM" (local time).
 pub fn data_e_hora_local() -> String {
     let t = crate::platform::locale::agora();
-    format!("{:04}-{:02}-{:02} {:02}:{:02}", t.year, t.month, t.day, t.hour, t.minute)
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}",
+        t.year, t.month, t.day, t.hour, t.minute
+    )
 }
 
 #[cfg(test)]
@@ -310,17 +313,31 @@ mod tests {
     }
 
     fn t() -> Option<Traffic> {
-        Some(Traffic { down_rate: 1.0, up_rate: 1.0, down_total: 10, up_total: 10 })
+        Some(Traffic {
+            down_rate: 1.0,
+            up_rate: 1.0,
+            down_total: 10,
+            up_total: 10,
+        })
     }
 
     #[test]
     fn icone_agregado() {
         use Situacao::*;
         assert_eq!(agregar([].into_iter()), Agregado::Nenhuma);
-        assert_eq!(agregar([Desconectado, Desconectado].into_iter()), Agregado::Nenhuma);
-        assert_eq!(agregar([Conectado, Desconectado].into_iter()), Agregado::Conectado);
+        assert_eq!(
+            agregar([Desconectado, Desconectado].into_iter()),
+            Agregado::Nenhuma
+        );
+        assert_eq!(
+            agregar([Conectado, Desconectado].into_iter()),
+            Agregado::Conectado
+        );
         // a single one in transition is enough to turn the icon amber
-        assert_eq!(agregar([Conectado, Reconectando].into_iter()), Agregado::Transicao);
+        assert_eq!(
+            agregar([Conectado, Reconectando].into_iter()),
+            Agregado::Transicao
+        );
         assert_eq!(agregar([Desconectando].into_iter()), Agregado::Transicao);
     }
 
@@ -347,7 +364,10 @@ mod tests {
         let (a, b) = (id("a"), id("b"));
         definir(&a, Situacao::Conectado, Some("10.0.0.5".into()));
         definir(&b, Situacao::Desconectado, None);
-        let contas = vec![(a.clone(), "Trabalho".to_string()), (b.clone(), "Cliente X".to_string())];
+        let contas = vec![
+            (a.clone(), "Trabalho".to_string()),
+            (b.clone(), "Cliente X".to_string()),
+        ];
         let (ag, linhas) = resumo(&contas);
         assert_eq!(ag, Agregado::Conectado);
         assert_eq!(linhas[0], "1 de 2 conectadas");
@@ -371,7 +391,13 @@ mod tests {
 
         assert!(servidor_respondeu("AUTH"));
         assert!(servidor_respondeu("CONNECTED"));
-        for ainda_nao in ["CONNECTING", "TCP_CONNECT", "WAIT", "RESOLVE", "RECONNECTING"] {
+        for ainda_nao in [
+            "CONNECTING",
+            "TCP_CONNECT",
+            "WAIT",
+            "RESOLVE",
+            "RECONNECTING",
+        ] {
             assert!(!servidor_respondeu(ainda_nao), "{ainda_nao}");
         }
     }
@@ -379,7 +405,11 @@ mod tests {
     #[test]
     fn log_guarda_a_conta_separada() {
         log("Conta Separada", "linha de teste");
-        let e = log_entradas().into_iter().rev().find(|e| e.origem == "Conta Separada").unwrap();
+        let e = log_entradas()
+            .into_iter()
+            .rev()
+            .find(|e| e.origem == "Conta Separada")
+            .unwrap();
         assert_eq!(e.msg, "linha de teste");
         assert_eq!(e.hora.len(), 8); // HH:MM:SS
         assert!(e.texto().ends_with("[Conta Separada] linha de teste"));
@@ -388,6 +418,8 @@ mod tests {
     #[test]
     fn log_prefixa_a_conta() {
         log("Cliente X", "Conectando...");
-        assert!(log_linhas().iter().any(|l| l.ends_with("[Cliente X] Conectando...")));
+        assert!(log_linhas()
+            .iter()
+            .any(|l| l.ends_with("[Cliente X] Conectando...")));
     }
 }
