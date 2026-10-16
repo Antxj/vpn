@@ -19,6 +19,23 @@ The package is digitally signed by "OpenVPN Inc." and its integrity
 The Linux file (VPN-linux-x86_64) does not include OpenVPN: it uses the
 openvpn package installed from the user's distribution.
 
+The macOS file (VPN-macos.zip) includes an openvpn executable built from
+the official OpenVPN 2.7.6 source (link below) by rust/build-release-macos.sh
+in this repository, without modifications, statically linked with:
+
+- OpenSSL 3.5.9 - Apache License 2.0
+  https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz
+- LZO 2.10 - GNU General Public License version 2 or later
+  https://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
+- LZ4 1.10.0 (its library: BSD-2-Clause)
+  https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz
+
+and OpenVPN's DNS script for macOS (distro/dns-scripts/macos-dns-updown.sh,
+BSD-2-Clause, Copyright OpenVPN Inc). These source archives, with the build
+script (which pins their SHA-256 and the build options), are the complete
+corresponding source of that executable. OpenVPN's license includes a
+special exception that allows linking it with OpenSSL.
+
 OpenVPN is free software, licensed under the GNU General Public License
 version 2 (GPLv2). Full license text:
 
@@ -31,7 +48,8 @@ Source code corresponding to the distributed binary:
 
 Trademarks: "OpenVPN" is a registered trademark of OpenVPN Inc. This app
 is not produced, sponsored or endorsed by OpenVPN Inc.; it only uses and
-redistributes the official installer.
+redistributes the official installer (Windows) and OpenVPN built from its
+official source (macOS).
 
 Relationship between the programs
 ---------------------------------

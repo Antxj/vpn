@@ -10,7 +10,7 @@
   <a href="https://github.com/Antxj/vpn/releases/latest"><img src="https://img.shields.io/github/v/release/Antxj/vpn?label=Download&style=for-the-badge&color=2563eb" alt="Download the latest version"></a>
 </p>
 
-Windows app (and, experimentally, [Linux](#linux)) that connects to one or
+Windows app (and, experimentally, [Linux](#linux) and [macOS](#macos)) that connects to one or
 **several OpenVPN VPNs at the same time**, generating the Google Authenticator token automatically — no need to
 open the phone app for every connection. If a connection drops, it
 reconnects by itself with a fresh token.
@@ -205,6 +205,57 @@ sudo rm -f /usr/local/libexec/vpn-openvpn-helper /usr/share/polkit-1/actions/io.
 sudo gpasswd -d "$USER" vpn-openvpn
 ```
 
+## macOS
+
+> **Experimental.** The macOS version is new: it is built and tested by
+> GitHub on a Mac (including a real connection through a test OpenVPN
+> server), but not yet in everyday use. Feedback is welcome in the
+> [Issues](../../issues).
+
+**Requirements**
+
+- macOS 11 (Big Sur) or later, on Apple Silicon (M1, M2…) or Intel
+- Nothing else: the app brings its own OpenVPN
+
+**Install**
+
+1. Download `VPN-macos.zip` from the [Releases](../../releases) page and open it
+2. Drag **VPN.app** to the **Applications** folder (important: run from the
+   download folder, macOS keeps it in a temporary copy and updates do not last)
+3. Open it from Applications. The app is not signed by Apple (that costs a
+   yearly fee), so the first time macOS blocks it: open **System Settings ›
+   Privacy & Security**, scroll down to *"VPN" was blocked…* and click
+   **Open Anyway**, then confirm. This is needed only once.
+4. Add the accounts as on Windows
+
+On the **first connection**, the app asks for an administrator's password
+**once** (macOS's own password window). That authorization installs, owned by
+the system, OpenVPN and a small helper (a copy of the app) in
+`/Library/PrivilegedHelperTools`, and a `sudo` rule that lets your user run
+only that helper; from then on connections need no password — the same idea
+as the OpenVPN service on Windows. The helper only accepts the options the
+app itself uses and refuses `.ovpn` files that would run programs as root,
+read the password from a file, or read files outside the `.ovpn` folder.
+When the app ends (even if it crashes), the helper stops OpenVPN.
+
+The app's OpenVPN is built by GitHub from the official sources (OpenVPN,
+OpenSSL, LZO and LZ4, each checked by its SHA-256) — not Homebrew's, which
+belongs to your user and could be swapped by any program you run. The VPN's
+DNS servers are set with OpenVPN's own macOS script.
+
+The accounts are saved in `~/Library/Application Support/VPN/contas.dat`,
+encrypted with a key kept in the Keychain. After an update, macOS may ask
+once whether VPN can use that key: click **Always Allow**. Everything else
+works as on Windows: several connections at once, automatic token, icon in
+the menu bar, notifications, start with the system, backup and updates.
+
+**Uninstall**: quit the app from the menu bar icon, delete **VPN.app** and the
+folder `~/Library/Application Support/VPN`, then remove the authorization:
+
+```bash
+sudo rm -f /Library/PrivilegedHelperTools/io.github.antxj.vpn.helper /Library/PrivilegedHelperTools/io.github.antxj.vpn.openvpn /Library/PrivilegedHelperTools/io.github.antxj.vpn.dns-updown /etc/sudoers.d/vpn-openvpn ~/Library/LaunchAgents/io.github.antxj.vpn.plist
+```
+
 ## For developers
 
 Requirements: [Rust](https://rustup.rs) (toolchain
@@ -220,7 +271,7 @@ cargo test -- --ignored rota_direta   # creates and removes a real route (needs 
 
 Before a pull request: `cargo fmt` and `cargo clippy --all-targets -- -D warnings`.
 The [check workflow](.github/workflows/check.yml) runs them, and the tests,
-on Windows and Linux for every pull request (Dependabot's included).
+on Windows, Linux and macOS for every pull request (Dependabot's included).
 Tests never touch the everyday app's files or keyring: they use a
 temporary folder of their own.
 
@@ -235,12 +286,20 @@ Linux: Rust, `pkg-config` and the GTK 3 development files
 (`sudo apt install build-essential pkg-config libgtk-3-dev`), then
 `bash rust/build-release-linux.sh` (tests, build without machine paths, checks).
 
+macOS: Xcode Command Line Tools and Rust with the `aarch64-apple-darwin` and
+`x86_64-apple-darwin` targets, then `bash rust/build-release-macos.sh`: it
+builds OpenVPN with OpenSSL, LZO and LZ4 from their official sources (pinned
+SHA-256) for both processors, runs the tests and assembles the universal
+`VPN.app` and `VPN-macos.zip`. On GitHub, `rust/test-macos-connection.sh` then
+makes a real connection with that build to a local test server.
+
 Structure: the code shared by every system is in `rust/src/`; everything
 that talks to the operating system is in
 [`rust/src/platform/`](rust/src/platform/mod.rs), with one folder per system
-(`windows/`, `linux/`) holding the **same modules with the same interface** —
-the rest of the app does not know which system it runs on. A new system
-(e.g. macOS) is a new folder with the same modules.
+(`windows/`, `linux/`, `macos/`) holding the **same modules with the same
+interface** — the rest of the app does not know which system it runs on.
+Code used by more than one system sits next to them (`unix/` for Linux and
+macOS, `rfd_dialogs.rs` for Windows and macOS), re-exported by each folder.
 
 ```
 rust/src/
@@ -265,8 +324,13 @@ rust/src/
     mod.rs       the interface every system implements
     windows/     Win32: DPAPI, OpenVPN interactive service, UAC, registry,
                  WinHTTP/WinVerifyTrust, DirectX 12 fallback, embedded MSI
-    linux/       GTK tray and dialogs, keyring, pkexec/polkit helper,
-                 /proc/net/route, XDG autostart, ureq
+    linux/       GTK tray and dialogs, pkexec/polkit authorization,
+                 /proc/net/route, XDG autostart
+    macos/       menu bar icon, Keychain, sudo authorization with the app's
+                 own OpenVPN, sysctl routes, LaunchAgent, .zip updates
+    unix/        Linux + macOS: the root helper (.ovpn checks), accounts key,
+                 single instance, window, downloads (ureq)
+    rfd_dialogs.rs  Windows + macOS: native dialogs
 ```
 
 Modules in each `platform/<system>/`: `desktop` (window, tray icon,
@@ -287,7 +351,7 @@ Useful variables for development and testing:
 | `VPN_SCREENSHOT` | documentation screenshots: with `accounts`, `edit`, `new`, `settings`, `settings-end`, `update`, `export` or `import:<file>`, opens directly on that screen |
 | `VPN_LANGUAGE` | forces `pt` or `en` (screenshots) |
 | `VPN_RENDERER` | forces `opengl` or `dx12` to draw the window |
-| `VPN_SEM_CHAVEIRO` | Linux: keeps the accounts key in a file instead of the desktop keyring (tests and CI) |
+| `VPN_SEM_CHAVEIRO` | Linux and macOS: keeps the accounts key in a file instead of the keyring/Keychain (tests and CI) |
 | `VPN_UPDATE_URL` | queries another address instead of the GitHub API (update tests) |
 | `APPDATA` | redirect to a test folder so the real accounts are not touched (Linux: `XDG_CONFIG_HOME`) |
 
@@ -445,6 +509,16 @@ sha256sum VPN-linux-x86_64
 
 ```bash
 gh attestation verify VPN-linux-x86_64 --repo Antxj/vpn
+```
+
+On macOS, with the `.zip`:
+
+```bash
+shasum -a 256 VPN-macos.zip
+```
+
+```bash
+gh attestation verify VPN-macos.zip --repo Antxj/vpn
 ```
 
 ## License

@@ -23,8 +23,9 @@ Of particular interest:
 
 - exposure of saved accounts, passwords or TOTP seeds (stored with Windows
   DPAPI in `%APPDATA%\VPN\contas.dat`; on Linux in
-  `~/.config/vpn/contas.dat`, encrypted with a key kept in the desktop
-  keyring);
+  `~/.config/vpn/contas.dat` and on macOS in
+  `~/Library/Application Support/VPN/contas.dat`, encrypted with a key kept
+  in the desktop keyring or the Keychain);
 - the account backup file (`.vpnbackup`: Argon2id + AES-256-GCM) and the
   import of its `.ovpn` files;
 - the update mechanism (download, SHA-256 and signature checks, executable
@@ -35,7 +36,11 @@ Of particular interest:
 - on Linux, the root helper run through pkexec
   (`/usr/local/libexec/vpn-openvpn-helper --openvpn-helper`): the options and
   `.ovpn` directives it accepts, and the polkit rule installed by the one-time
-  authorization.
+  authorization;
+- on macOS, the root helper run through sudo
+  (`/Library/PrivilegedHelperTools/io.github.antxj.vpn.helper --openvpn-helper`),
+  the sudo rule and the root-owned OpenVPN installed by the one-time
+  authorization, and the OpenVPN build itself (`rust/build-release-macos.sh`).
 
 Vulnerabilities in OpenVPN itself should be reported to the
 [OpenVPN project](https://community.openvpn.net/openvpn/wiki/SecurityAnnouncements).
