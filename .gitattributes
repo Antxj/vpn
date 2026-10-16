@@ -1,3 +1,6 @@
 # Image generators (tools/make_icon.py, tools/make_github_mark.py): kept as
 # the source of the icons, but not counted in the repository languages.
 tools/*.py linguist-detectable=false
+
+# shell scripts run on Linux: always LF, even in a Windows checkout
+*.sh text eol=lf
