@@ -94,13 +94,14 @@ compilar_openvpn() { # arm64 | x86_64
             -mmacosx-version-min=$MACOS_MIN >/dev/null &&
         make -j"$nucleos" >/dev/null && make install_sw >/dev/null)
 
+    # $p/lib has only static libraries: -lssl, -llzo2 and -llz4 link them in
     tar xzf "$fontes/openvpn-$OPENVPN_VERSAO.tar.gz" -C "$obra"
     (cd "$obra/openvpn-$OPENVPN_VERSAO" &&
         ./configure --host=$host --prefix="$PREFIXO_OPENVPN" \
             --disable-plugins --disable-unit-tests --disable-dependency-tracking \
-            OPENSSL_CFLAGS="-I$p/include" OPENSSL_LIBS="$p/lib/libssl.a $p/lib/libcrypto.a" \
-            LZO_CFLAGS="-I$p/include" LZO_LIBS="$p/lib/liblzo2.a" \
-            LZ4_CFLAGS="-I$p/include" LZ4_LIBS="$p/lib/liblz4.a" >/dev/null &&
+            OPENSSL_CFLAGS="-I$p/include" OPENSSL_LIBS="-L$p/lib -lssl -lcrypto" \
+            LZO_CFLAGS="-I$p/include" LZO_LIBS="-L$p/lib -llzo2" \
+            LZ4_CFLAGS="-I$p/include" LZ4_LIBS="-L$p/lib -llz4" >/dev/null &&
         make -j"$nucleos" >/dev/null)
     cp "$obra/openvpn-$OPENVPN_VERSAO/src/openvpn/openvpn" "$pronto"
     strip -x "$pronto"
