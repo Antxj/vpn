@@ -254,6 +254,9 @@ mod tests {
     use super::*;
 
     #[test]
+    // AppKit builds menus only on the main thread, and tests run on others
+    // (the same code is tested on Windows and Linux)
+    #[cfg_attr(target_os = "macos", ignore)]
     fn menu_da_bandeja_tem_um_item_por_conta() {
         let contas = vec![
             ("a".to_string(), "Trabalho".to_string()),
