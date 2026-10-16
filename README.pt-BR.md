@@ -237,7 +237,12 @@ uma pasta nova com os mesmos módulos.
 
 ```
 rust/src/
-  main.rs        interface (egui) e menu da bandeja
+  main.rs        inicialização e o estado comum ao app todo
+  tray.rs        ícone da bandeja e o menu dele
+  ui/            a janela (egui): mod.rs (estado do app, cada quadro), um
+                 arquivo por tela (home, accounts_screen, editor,
+                 settings_screen, backup_window, update_window), theme.rs,
+                 widgets.rs
   engine.rs      contas e conexões ativas
   vpn.rs         uma conexão: OpenVPN, interface de gerenciamento, quedas
   state.rs       estado e log de cada conta

@@ -244,7 +244,11 @@ the rest of the app does not know which system it runs on. A new system
 
 ```
 rust/src/
-  main.rs        user interface (egui) and tray menu
+  main.rs        startup and the state shared by the whole app
+  tray.rs        tray icon and its menu
+  ui/            the window (egui): mod.rs (app state, each frame), one file
+                 per screen (home, accounts_screen, editor, settings_screen,
+                 backup_window, update_window), theme.rs, widgets.rs
   engine.rs      accounts and active connections
   vpn.rs         one connection: OpenVPN, management interface, drops
   state.rs       per-account state and log

@@ -4,7 +4,8 @@
 use crate::*;
 use std::ffi::c_void;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64, Ordering};
+use std::time::Duration;
 
 /// The last notification shown was about a new version: clicking it opens
 /// the update window (other notifications just open the app).

@@ -6,6 +6,7 @@
 //! The window itself is egui/winit (X11 or Wayland) and needs no GTK.
 
 use crate::*;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::sync::OnceLock;
 use std::thread::ThreadId;
