@@ -64,7 +64,7 @@ compilar_openvpn() { # arm64 | x86_64
     esac
     local pronto=$deps/$arch/openvpn
     # versions + build recipe (raise "receita" when the options below change)
-    local marca="$OPENSSL_VERSAO $LZO_VERSAO $LZ4_VERSAO $OPENVPN_VERSAO $MACOS_MIN receita-2"
+    local marca="$OPENSSL_VERSAO $LZO_VERSAO $LZ4_VERSAO $OPENVPN_VERSAO $MACOS_MIN receita-3"
     if [ -f "$pronto" ] && [ "$(cat "$deps/$arch/versoes" 2>/dev/null)" = "$marca" ]; then
         echo "OpenVPN for $arch: already built ($marca)."
         return
@@ -94,12 +94,14 @@ compilar_openvpn() { # arm64 | x86_64
 
     # no-dso/no-module: no code loaded from files at run time. Its folders
     # (configuration, modules) point to a root-only place; installed with
-    # DESTDIR so the build folder is not compiled in
+    # DESTDIR so the build folder is not compiled in. OpenSSL keeps its
+    # compiler flags in the binary, so no folder goes in them (its file
+    # names are relative already).
     tar xzf "$fontes/openssl-$OPENSSL_VERSAO.tar.gz" -C "$obra"
     (cd "$obra/openssl-$OPENSSL_VERSAO" &&
-        ./Configure $openssl_alvo no-shared no-dso no-module no-engine no-tests no-docs \
+        CFLAGS="-O2" ./Configure $openssl_alvo no-shared no-dso no-module no-engine no-tests no-docs \
             --prefix="$PASTA_OPENSSL" --libdir=lib --openssldir="$PASTA_OPENSSL" \
-            -mmacosx-version-min=$MACOS_MIN $mapas >/dev/null &&
+            -mmacosx-version-min=$MACOS_MIN >/dev/null &&
         make -j"$nucleos" >/dev/null && make install_sw DESTDIR="$obra/destino" >/dev/null &&
         cp -R "$obra/destino$PASTA_OPENSSL/include/openssl" "$p/include/" &&
         cp "$obra/destino$PASTA_OPENSSL/lib/libssl.a" \
