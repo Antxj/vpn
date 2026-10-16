@@ -19,7 +19,7 @@ Written in **Rust**: a single ~12 MB native executable that already ships the
 official OpenVPN installer — nothing needs to be installed beforehand.
 
 The interface is available in English and Brazilian Portuguese, following
-the Windows language (it can be set under **Settings** ⚙ › Language).
+the system language (it can be set under **Settings** ⚙ › Language).
 
 | Dark theme | Light theme |
 |---|---|
@@ -92,7 +92,7 @@ without user intervention.
 - **Conflicting routes warning**: if two accounts send all traffic through
   the VPN, the app warns before connecting the second one — only the last one
   would work as the default route
-- **English or Portuguese**: follows the Windows language; either one can be
+- **English or Portuguese**: follows the system language; either one can be
   set under **Settings** ⚙ › Language
 - **Settings** (⚙ button): start with Windows, start minimized in the tray,
   which accounts connect when the app opens, theme, language and update

@@ -21,10 +21,8 @@ flags=(
 CARGO_ENCODED_RUSTFLAGS=$(IFS=$'\x1f'; echo "${flags[*]}")
 export CARGO_ENCODED_RUSTFLAGS
 
-# tests: isolated settings folder, key in a file (no desktop keyring in CI)
-testes=$(mktemp -d)
-VPN_SEM_CHAVEIRO=1 XDG_CONFIG_HOME="$testes" cargo test --locked
-rm -rf "$testes"
+# the tests use a temporary folder and an in-memory key of their own
+cargo test --locked
 
 cargo clean --release
 cargo build --release --locked

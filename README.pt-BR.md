@@ -86,7 +86,7 @@ periódicas e as reconexões após queda funcionam sem intervenção.
 - **Aviso de rotas conflitantes**: se duas contas mandam toda a internet pela
   VPN, o app avisa antes de conectar a segunda — só a última funcionaria como
   rota padrão
-- **Português ou inglês**: segue o idioma do Windows; dá para fixar um dos
+- **Português ou inglês**: segue o idioma do sistema; dá para fixar um dos
   dois em **Configurações** ⚙ › Idioma
 - **Configurações** (botão ⚙): iniciar com o Windows, iniciar minimizado na
   bandeja, quais contas conectam ao abrir o app, tema, idioma e verificação de
