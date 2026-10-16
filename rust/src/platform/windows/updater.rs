@@ -16,6 +16,14 @@ pub const CABECALHO: &[u8] = b"MZ";
 /// Nothing to do: on Windows any file can be run.
 pub fn tornar_executavel(_arquivo: &Path) {}
 
+/// The downloaded file is the executable itself.
+pub fn extrair(dados: Vec<u8>) -> Result<Vec<u8>, String> {
+    Ok(dados)
+}
+
+/// Nothing besides the executable to update.
+pub fn depois_de_trocar(_exe: &Path) {}
+
 /// On the first start after an update: waits for the previous version to close
 /// (it is still disconnecting the VPNs and holding the single instance).
 pub fn aguardar_processo(pid: u32, limite: Duration) {

@@ -1,4 +1,5 @@
-//! Windows: native dialogs through rfd.
+//! Windows and macOS: native dialogs through rfd (on macOS rfd runs them on
+//! the main thread by itself, as AppKit requires).
 
 use crate::dialogs::{Filtro, Nivel};
 use std::path::PathBuf;

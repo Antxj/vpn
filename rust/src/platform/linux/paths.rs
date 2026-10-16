@@ -2,12 +2,7 @@
 
 use std::path::PathBuf;
 
-/// The user's home folder.
-pub fn pasta_home() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
-}
+pub use crate::platform::unix::paths::pasta_home;
 
 /// App data folder (settings and logs): $XDG_CONFIG_HOME/vpn, usually ~/.config/vpn.
 pub fn app_dir() -> PathBuf {

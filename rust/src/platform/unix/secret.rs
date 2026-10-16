@@ -1,9 +1,11 @@
-//! Linux: protection of the saved accounts (the role DPAPI plays on Windows).
+//! Linux and macOS: protection of the saved accounts (the role DPAPI plays
+//! on Windows).
 //!
 //! contas.dat is encrypted with AES-256-GCM. The key lives in the desktop
-//! keyring (Secret Service: GNOME Keyring, KWallet), unlocked by the user's
-//! login. Without a keyring service (minimal desktops), the key goes to a
-//! file next to the accounts that only this user can read.
+//! keyring (Linux: Secret Service - GNOME Keyring, KWallet; macOS: the
+//! Keychain), unlocked by the user's login. Without a keyring service
+//! (minimal Linux desktops), the key goes to a file next to the accounts
+//! that only this user can read.
 //!
 //! The file header says where its key is, so a keyring that is momentarily
 //! unavailable never makes the app create a new key for an existing file.
@@ -19,6 +21,7 @@ use std::sync::{Mutex, OnceLock};
 /// then kept untouched until it opens (settings.rs).
 pub const PODE_FICAR_INDISPONIVEL: bool = true;
 
+/// File format mark (the same on Linux and macOS).
 const MAGICO: &[u8; 7] = b"VPNLNX1";
 const SERVICO: &str = "io.github.antxj.vpn";
 const NO_CHAVEIRO: u8 = b'K';

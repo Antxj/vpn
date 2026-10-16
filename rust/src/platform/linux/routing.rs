@@ -1,7 +1,10 @@
-//! Linux: the IPv4 routing table (/proc/net/route) and the interface of an
-//! address (getifaddrs).
+//! Linux: the IPv4 routing table (/proc/net/route); the interface of an
+//! address comes from unix/routing.rs.
 
+use crate::platform::unix::routing::indice_da_interface;
 use std::net::Ipv4Addr;
+
+pub use crate::platform::unix::routing::interface_do_ip;
 
 /// Routes as (network, prefix length, interface index).
 pub fn rotas() -> Vec<(Ipv4Addr, u8, u32)> {
@@ -34,41 +37,6 @@ fn rotas_do_proc(texto: &str) -> Vec<(Ipv4Addr, u8, String)> {
             ))
         })
         .collect()
-}
-
-fn indice_da_interface(nome: &str) -> Option<u32> {
-    let c = std::ffi::CString::new(nome).ok()?;
-    let i = unsafe { libc::if_nametoindex(c.as_ptr()) };
-    (i != 0).then_some(i)
-}
-
-/// Index of the interface that has the address.
-pub fn interface_do_ip(ip: Ipv4Addr) -> Option<u32> {
-    let mut lista: *mut libc::ifaddrs = std::ptr::null_mut();
-    if unsafe { libc::getifaddrs(&mut lista) } != 0 {
-        return None;
-    }
-    let mut achado = None;
-    let mut atual = lista;
-    while !atual.is_null() {
-        let item = unsafe { &*atual };
-        if !item.ifa_addr.is_null()
-            && i32::from(unsafe { (*item.ifa_addr).sa_family }) == libc::AF_INET
-        {
-            let sin = unsafe { &*(item.ifa_addr as *const libc::sockaddr_in) };
-            if Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr)) == ip {
-                achado = Some(
-                    unsafe { std::ffi::CStr::from_ptr(item.ifa_name) }
-                        .to_string_lossy()
-                        .into_owned(),
-                );
-                break;
-            }
-        }
-        atual = item.ifa_next;
-    }
-    unsafe { libc::freeifaddrs(lista) };
-    indice_da_interface(&achado?)
 }
 
 #[cfg(test)]

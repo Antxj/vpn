@@ -3,7 +3,7 @@
 //! Each system has a folder with the same modules and the same interface
 //! (functions, types and constants with the same names); the rest of the app
 //! only uses that interface and does not need to know which system it runs
-//! on. A new system (e.g. macOS) is a new folder with the same modules.
+//! on. A new system is a new folder with the same modules.
 //!
 //! - `desktop`: window, tray icon, notifications
 //! - `dialogs`: native dialogs (messages, questions, open/save file)
@@ -19,6 +19,10 @@
 //! - `single`: single instance
 //! - `startup`: start with the system
 //! - `updater`: download and checks of a new version
+//!
+//! Code used by more than one system lives next to the folders: `unix/`
+//! (Linux and macOS) and `rfd_dialogs.rs` (Windows and macOS). A system's
+//! folder re-exports it under the module name of the interface.
 
 #[cfg(windows)]
 #[path = "windows/mod.rs"]
@@ -27,6 +31,16 @@ mod sistema;
 #[cfg(target_os = "linux")]
 #[path = "linux/mod.rs"]
 mod sistema;
+
+#[cfg(target_os = "macos")]
+#[path = "macos/mod.rs"]
+mod sistema;
+
+#[cfg(unix)]
+pub mod unix;
+
+#[cfg(any(windows, target_os = "macos"))]
+pub mod rfd_dialogs;
 
 pub use sistema::*;
 

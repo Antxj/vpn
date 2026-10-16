@@ -1,4 +1,6 @@
-//! Single instance on Linux: a Unix socket in the user's runtime directory.
+//! Single instance on Linux and macOS: a Unix socket in the user's runtime
+//! directory (Linux: $XDG_RUNTIME_DIR; macOS: the user's private temporary
+//! folder).
 //! The first instance listens on it; a second one connects, asks the first
 //! to show itself and exits.
 

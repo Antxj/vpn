@@ -19,7 +19,9 @@
 //! Linux build is not signed, so only the SHA-256 check applies).
 
 pub use crate::platform::updater::{aguardar_processo, ARQUIVO};
-use crate::platform::updater::{assinante, http_get, sha256_hex, tornar_executavel, CABECALHO};
+use crate::platform::updater::{
+    assinante, depois_de_trocar, extrair, http_get, sha256_hex, tornar_executavel, CABECALHO,
+};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -375,6 +377,8 @@ fn baixar_e_trocar(v: &Versao, alvo: &Path, progresso: &mut dyn FnMut(f32)) -> R
         )
         .into());
     }
+    // macOS: the executable inside the .zip (elsewhere the file itself)
+    let dados = extrair(dados)?;
     if !dados.starts_with(CABECALHO) {
         return Err(tr!(
             "O arquivo baixado não é um executável. Nada foi alterado.",
@@ -424,6 +428,7 @@ fn baixar_e_trocar(v: &Versao, alvo: &Path, progresso: &mut dyn FnMut(f32)) -> R
         let _ = std::fs::remove_file(&novo);
         return Err(falha(e));
     }
+    depois_de_trocar(alvo);
     Ok(())
 }
 

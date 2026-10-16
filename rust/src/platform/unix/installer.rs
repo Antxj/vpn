@@ -1,5 +1,7 @@
-//! Linux: OpenVPN comes from the distribution's package manager, so there is
-//! no embedded installer. Same interface as the Windows module, never available.
+//! Linux and macOS: there is no installer to run. Linux uses the
+//! distribution's OpenVPN; macOS the one embedded in the app, installed by
+//! the one-time authorization (macos/service.rs). Same interface as the
+//! Windows module, never available.
 
 use std::sync::mpsc::Sender;
 

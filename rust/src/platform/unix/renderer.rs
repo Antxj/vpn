@@ -1,6 +1,7 @@
-//! Linux: the window is always drawn with OpenGL (Mesa or the video driver;
-//! Mesa draws on the CPU when there is no GPU, so there is no fallback to
-//! choose). Same interface as the Windows module.
+//! Linux and macOS: the window is always drawn with OpenGL (Linux: Mesa or
+//! the video driver, and Mesa draws on the CPU when there is no GPU; macOS:
+//! the system's OpenGL), so there is no fallback to choose. Same interface as
+//! the Windows module.
 
 pub const ARG_DX12: &str = "--dx12";
 

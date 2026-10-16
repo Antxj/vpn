@@ -1,7 +1,7 @@
 //! Windows implementation of the platform interface (see ../mod.rs).
 
 pub mod desktop;
-pub mod dialogs;
+pub use super::rfd_dialogs as dialogs;
 pub mod elevate;
 pub mod installer;
 pub mod locale;
