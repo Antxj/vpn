@@ -63,7 +63,8 @@ compilar_openvpn() { # arm64 | x86_64
         x86_64) host=x86_64-apple-darwin; local openssl_alvo=darwin64-x86_64-cc ;;
     esac
     local pronto=$deps/$arch/openvpn
-    local marca="$OPENSSL_VERSAO $LZO_VERSAO $LZ4_VERSAO $OPENVPN_VERSAO $MACOS_MIN"
+    # versions + build recipe (raise "receita" when the options below change)
+    local marca="$OPENSSL_VERSAO $LZO_VERSAO $LZ4_VERSAO $OPENVPN_VERSAO $MACOS_MIN receita-2"
     if [ -f "$pronto" ] && [ "$(cat "$deps/$arch/versoes" 2>/dev/null)" = "$marca" ]; then
         echo "OpenVPN for $arch: already built ($marca)."
         return
@@ -72,8 +73,13 @@ compilar_openvpn() { # arm64 | x86_64
     local obra=$deps/obra-$arch
     rm -rf "$p" "$obra"
     mkdir -p "$p" "$obra"
+    # build folders become neutral names in the binaries (__FILE__ and the like)
+    local mapas="-ffile-prefix-map=$obra=build -ffile-prefix-map=$p=deps"
     export CC="clang -arch $arch -mmacosx-version-min=$MACOS_MIN"
-    export CFLAGS="-O2"
+    export CFLAGS="-O2 $mapas"
+    # the build folder is inside this git repository: openvpn must not take
+    # its commit as its own version
+    export GIT=/usr/bin/false
 
     tar xzf "$fontes/lzo-$LZO_VERSAO.tar.gz" -C "$obra"
     (cd "$obra/lzo-$LZO_VERSAO" &&
@@ -86,13 +92,18 @@ compilar_openvpn() { # arm64 | x86_64
         mkdir -p "$p/include" "$p/lib" &&
         cp lz4.h lz4hc.h lz4frame.h "$p/include/" && cp liblz4.a "$p/lib/")
 
-    # no-dso/no-module: no code loaded from files at run time
+    # no-dso/no-module: no code loaded from files at run time. Its folders
+    # (configuration, modules) point to a root-only place; installed with
+    # DESTDIR so the build folder is not compiled in
     tar xzf "$fontes/openssl-$OPENSSL_VERSAO.tar.gz" -C "$obra"
     (cd "$obra/openssl-$OPENSSL_VERSAO" &&
         ./Configure $openssl_alvo no-shared no-dso no-module no-engine no-tests no-docs \
-            --prefix="$p" --libdir=lib --openssldir="$PASTA_OPENSSL" \
-            -mmacosx-version-min=$MACOS_MIN >/dev/null &&
-        make -j"$nucleos" >/dev/null && make install_sw >/dev/null)
+            --prefix="$PASTA_OPENSSL" --libdir=lib --openssldir="$PASTA_OPENSSL" \
+            -mmacosx-version-min=$MACOS_MIN $mapas >/dev/null &&
+        make -j"$nucleos" >/dev/null && make install_sw DESTDIR="$obra/destino" >/dev/null &&
+        cp -R "$obra/destino$PASTA_OPENSSL/include/openssl" "$p/include/" &&
+        cp "$obra/destino$PASTA_OPENSSL/lib/libssl.a" \
+            "$obra/destino$PASTA_OPENSSL/lib/libcrypto.a" "$p/lib/")
 
     # $p/lib has only static libraries: -lssl, -llzo2 and -llz4 link them in
     tar xzf "$fontes/openvpn-$OPENVPN_VERSAO.tar.gz" -C "$obra"
@@ -107,6 +118,11 @@ compilar_openvpn() { # arm64 | x86_64
     strip -x "$pronto"
     cp "$obra/openvpn-$OPENVPN_VERSAO/distro/dns-scripts/macos-dns-updown.sh" "$deps/dns-updown-macos.sh"
 
+    if grep -aqF -- "$home" "$pronto"; then
+        echo "openvpn ($arch) contains build folders:" >&2
+        strings -a "$pronto" | grep -F -- "$home" | head -5 >&2
+        exit 1
+    fi
     # only system libraries (nothing from Homebrew or the build machine)
     if otool -L "$pronto" | tail -n +2 | grep -vE "^\s+/(usr/lib|System/Library)/"; then
         echo "openvpn ($arch) links to libraries outside the system." >&2
@@ -119,7 +135,7 @@ compilar_openvpn() { # arm64 | x86_64
     "$pronto" --version | head -1 || true
     echo "$marca" > "$deps/$arch/versoes"
     rm -rf "$obra"
-    unset CC CFLAGS
+    unset CC CFLAGS GIT
 }
 
 compilar_openvpn arm64
@@ -201,6 +217,7 @@ binario=$app/Contents/MacOS/VPN
 for valor in "$home" "$crate"; do
     if grep -aqF -- "$valor" "$binario"; then
         echo "The executable contains local build information: $valor" >&2
+        strings -a "$binario" | grep -F -- "$valor" | head -5 >&2
         exit 1
     fi
 done

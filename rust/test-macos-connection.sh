@@ -29,6 +29,21 @@ falhou() {
     exit 1
 }
 
+# how many windows of the app are on the screen (Quartz: no permission
+# needed for the owner and the size)
+cat > "$saida/janelas.swift" <<'EOF'
+import CoreGraphics
+let lista = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+let minhas = lista.filter {
+    ($0[kCGWindowOwnerName as String] as? String) == "VPN"
+        && (($0[kCGWindowBounds as String] as? [String: Any])?["Height"] as? Double ?? 0) > 200
+}
+print(minhas.count)
+EOF
+janelas() {
+    swift "$saida/janelas.swift" 2>/dev/null || echo 0
+}
+
 echo "--- one-time authorization (root side)"
 sudo "$exe" --authorize-openvpn-user "$(id -un)" || falhou "authorization (exit $?)"
 for f in $helper $openvpn $dns; do
@@ -128,6 +143,8 @@ cp "$dados"/logs/*.log "$saida/" 2>/dev/null || true
 [ -n "$conectado" ] || falhou "the app did not connect"
 grep -E "Initialization Sequence Completed|PUSH_REPLY|net_route|dns" "$dados/logs/openvpn-c1.log" | head -5
 
+[ "$(janelas)" -ge 1 ] || falhou "the window is not on the screen"
+
 echo "--- the app ends abruptly: the helper stops openvpn"
 kill -9 $pid_app
 sleep 8
@@ -135,6 +152,22 @@ if pgrep -fl "$openvpn --config /var/run/vpn-openvpn-helper"; then
     falhou "openvpn left behind"
 fi
 echo "nothing left behind"
+
+echo "--- started with the system (minimized): only the menu bar icon; a second"
+echo "    instance brings the window back"
+VPN_SEM_CHAVEIRO=1 VPN_SKIP_HINT=1 "$exe" --startup >"$saida/app-oculto.log" 2>&1 &
+pid_app=$!
+sleep 8
+screencapture -x "$saida/tela-oculto.png" || true
+[ "$(janelas)" -eq 0 ] || falhou "the window shows although started minimized"
+VPN_SEM_CHAVEIRO=1 "$exe" >/dev/null 2>&1 || true
+sleep 4
+screencapture -x "$saida/tela-reaberta.png" || true
+[ "$(janelas)" -ge 1 ] || falhou "the second instance did not bring the window back"
+kill -9 $pid_app
+sleep 8
+pgrep -fl "$openvpn --config /var/run/vpn-openvpn-helper" && falhou "openvpn left behind (2)"
+echo "window hidden and shown again"
 
 sudo kill "$(cat "$saida/servidor.pid")" 2>/dev/null || true
 echo "CONNECTION TEST OK"
