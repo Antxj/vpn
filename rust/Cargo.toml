@@ -46,6 +46,16 @@ keyring = { version = "3", default-features = false, features = ["async-secret-s
 ureq = "2"
 sha2 = "0.10"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+# native dialogs (rfd runs them on the main thread, as AppKit requires)
+rfd = "0.17"
+notify-rust = "4"
+# key of the saved accounts, kept in the Keychain
+keyring = { version = "3", default-features = false, features = ["apple-native"] }
+ureq = "2"
+sha2 = "0.10"
+
 [dev-dependencies]
 qrcode = "0.14"
 ttf-parser = "0.25"

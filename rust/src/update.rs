@@ -608,12 +608,35 @@ mod tests {
         base
     }
 
+    /// The release asset with `exe` inside (macOS: VPN.app in a .zip).
+    fn anexo(exe: &[u8]) -> Vec<u8> {
+        if !cfg!(target_os = "macos") {
+            return exe.to_vec();
+        }
+        let pasta = std::env::temp_dir().join(format!("vpn-teste-anexo-{}", std::process::id()));
+        let macos = pasta.join("VPN.app/Contents/MacOS");
+        std::fs::create_dir_all(&macos).unwrap();
+        std::fs::write(macos.join("VPN"), exe).unwrap();
+        let zip = pasta.join("anexo.zip");
+        let ok = std::process::Command::new("/usr/bin/ditto")
+            .args(["-c", "-k", "--keepParent"])
+            .arg(pasta.join("VPN.app"))
+            .arg(&zip)
+            .status()
+            .unwrap();
+        assert!(ok.success());
+        let dados = std::fs::read(&zip).unwrap();
+        let _ = std::fs::remove_dir_all(&pasta);
+        dados
+    }
+
     #[test]
     fn baixa_confere_e_troca_o_executavel() {
         let cabecalho = CABECALHO;
         let novo_exe = [cabecalho, b" versao nova do aplicativo"].concat();
-        let hash = sha256_hex(&novo_exe).unwrap();
-        let base = servidor(vec![("/VPN.exe", novo_exe.clone())]);
+        let publicado = anexo(&novo_exe);
+        let hash = sha256_hex(&publicado).unwrap();
+        let base = servidor(vec![("/VPN.exe", publicado.clone())]);
 
         let pasta =
             std::env::temp_dir().join(format!("vpn-teste-atualizacao-{}", std::process::id()));
@@ -625,7 +648,7 @@ mod tests {
             numero: "9.9.9".into(),
             pagina: String::new(),
             download: format!("{base}/VPN.exe"),
-            tamanho: novo_exe.len() as u64,
+            tamanho: publicado.len() as u64,
             sha256: Some(sha.into()),
         };
 

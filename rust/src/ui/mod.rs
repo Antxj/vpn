@@ -88,6 +88,8 @@ pub(crate) struct App {
     backup: Option<JanelaBackup>,
     /// GitHub mark (white; tinted with the theme's text color).
     logo_github: egui::TextureHandle,
+    /// Where the app runs from is not where it can stay (macOS).
+    aviso_local: Option<String>,
 }
 
 impl App {
@@ -187,6 +189,7 @@ impl App {
             install_rx,
             install_tx,
             logo_github,
+            aviso_local: platform::paths::aviso_de_local(),
             backup: None,
         };
         // VPN_SCREENSHOT=accounts|edit|new opens straight on that screen (documentation
@@ -395,6 +398,11 @@ impl App {
                     Tela::Inicio
                 };
             }
+        }
+
+        // macOS: the temporary copy of a downloaded app (updates would not last)
+        if let Some(aviso) = &self.aviso_local {
+            faixa(ui, aviso, &mut |_| {});
         }
 
         if self.openvpn_missing {

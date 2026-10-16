@@ -12,3 +12,9 @@ pub fn app_dir() -> PathBuf {
         .unwrap_or_else(|| pasta_home().join(".config"))
         .join("vpn")
 }
+
+/// Warning about where the app runs from (only macOS has one: a temporary
+/// copy of a downloaded app).
+pub fn aviso_de_local() -> Option<String> {
+    None
+}

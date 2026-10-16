@@ -2,6 +2,8 @@
 
 Writes the .ico files to the current folder. The app only uses the blue icon,
 copied to rust/assets/icon.ico (the tray icons are the PNGs in rust/assets).
+Also writes VPN.icns (blue, up to 1024 px), the macOS app icon, copied to
+rust/assets/VPN.icns.
 
 - icon.ico       blue    (app/window/exe icon)
 - icon_gray.ico  gray    (tray: disconnected)
@@ -69,3 +71,7 @@ if __name__ == "__main__":
                         sizes=[(s, s) for s in sizes],
                         append_images=images[:-1])
         print(f"{name} generated.")
+
+    # macOS app icon: Pillow writes every size the .icns format has
+    draw_icon(1024, *VARIANTS["icon.ico"]).save("VPN.icns", format="ICNS")
+    print("VPN.icns generated.")

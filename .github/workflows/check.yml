@@ -1,5 +1,5 @@
 # Checks every pull request (Dependabot's included) and every push to main
-# on both systems: formatting, clippy lints and the tests. Builds nothing
+# on every system: formatting, clippy lints and the tests. Builds nothing
 # for release.
 #
 # Third-party actions are pinned by commit hash (not by tag, which can be
@@ -69,6 +69,28 @@ jobs:
       - name: Formatting
         working-directory: rust
         run: cargo fmt --check
+
+      - name: Clippy
+        working-directory: rust
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Tests
+        working-directory: rust
+        run: cargo test --locked
+
+  macos:
+    # Apple Silicon; the tests also cover the macOS routing table and the
+    # .zip of the updater
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
 
       - name: Clippy
         working-directory: rust

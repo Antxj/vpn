@@ -9,3 +9,7 @@ icon_preview.png
 
 # official OpenVPN installer: downloaded by build-release.ps1 (5.6 MB)
 rust/assets/openvpn.msi
+
+# OpenVPN built for macOS and its DNS script: made by build-release-macos.sh
+rust/assets/openvpn-macos-*
+rust/assets/dns-updown-macos.sh
