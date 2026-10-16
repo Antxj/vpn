@@ -23,8 +23,15 @@ dados="$HOME/Library/Application Support/VPN"
 rm -rf "$saida" "$pasta" "$dados"
 mkdir -p "$saida" "$pasta"
 
+# the test server runs as root: its files are made readable for the report
+devolver() {
+    sudo chown "$(id -un)" "$saida"/servidor.* 2>/dev/null || true
+}
+
 falhou() {
     echo "FAILED: $*" >&2
+    devolver
+    tail -20 "$saida/servidor.log" 2>/dev/null || true
     cp "$dados"/logs/*.log "$saida/" 2>/dev/null || true
     exit 1
 }
@@ -98,10 +105,10 @@ verb 3
 EOF
 sudo "$openvpn" --config servidor.conf --daemon --log "$saida/servidor.log" --writepid "$saida/servidor.pid"
 for _ in $(seq 20); do
-    grep -q "Initialization Sequence Completed" "$saida/servidor.log" 2>/dev/null && break
+    sudo grep -q "Initialization Sequence Completed" "$saida/servidor.log" 2>/dev/null && break
     sleep 1
 done
-grep -q "Initialization Sequence Completed" "$saida/servidor.log" || falhou "test server"
+sudo grep -q "Initialization Sequence Completed" "$saida/servidor.log" || falhou "test server"
 
 inline() {
     echo "<ca>"; cat ca.crt; echo "</ca>"
@@ -169,5 +176,6 @@ sleep 8
 pgrep -fl "$openvpn --config /var/run/vpn-openvpn-helper" && falhou "openvpn left behind (2)"
 echo "window hidden and shown again"
 
-sudo kill "$(cat "$saida/servidor.pid")" 2>/dev/null || true
+sudo kill "$(sudo cat "$saida/servidor.pid")" 2>/dev/null || true
+devolver
 echo "CONNECTION TEST OK"
