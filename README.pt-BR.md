@@ -152,8 +152,9 @@ reconhecido": clique em **Mais informações** › **Executar assim mesmo**.
 ## Linux
 
 > **Experimental.** A versão Linux é nova: foi testada no Ubuntu 24.04
-> (inclusive com uma conexão real a um servidor OpenVPN de teste), mas ainda
-> não no uso do dia a dia. Comentários são bem-vindos nas [Issues](../../issues).
+> (inclusive com uma conexão real a um servidor OpenVPN de teste) e num
+> computador Linux de verdade, mas ainda não está no uso do dia a dia de
+> muita gente. Comentários são bem-vindos nas [Issues](../../issues).
 
 ![VPN no Linux](docs/pt-BR/linux.png)
 
@@ -201,9 +202,10 @@ sudo gpasswd -d "$USER" vpn-openvpn
 
 ## macOS
 
-> **Experimental.** A versão macOS é nova: ela é compilada e testada pelo
+> **Experimental.** A versão macOS é nova: cada build é testado pelo
 > GitHub num Mac (inclusive com uma conexão real a um servidor OpenVPN de
-> teste), mas ainda não no uso do dia a dia. Comentários são bem-vindos nas
+> teste), e ela também foi testada num Mac de verdade, mas ainda não está no
+> uso do dia a dia de muita gente. Comentários são bem-vindos nas
 > [Issues](../../issues).
 
 **Requisitos**
