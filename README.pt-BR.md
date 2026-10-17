@@ -88,10 +88,12 @@ periódicas e as reconexões após queda funcionam sem intervenção.
   rota padrão
 - **Português ou inglês**: segue o idioma do sistema; dá para fixar um dos
   dois em **Configurações** ⚙ › Idioma
+- **Conectar ao abrir**: a caixinha "ao abrir", embaixo do interruptor de
+  cada conta, faz ela conectar sozinha sempre que o app abre
 - **Configurações** (botão ⚙): iniciar com o Windows, iniciar minimizado na
-  bandeja, quais contas conectam ao abrir o app, tema, idioma e verificação de
-  atualizações — tudo num lugar só, com os mesmos interruptores da tela inicial,
-  e um link discreto para este código-fonte
+  bandeja, tema, idioma e verificação de atualizações — tudo num lugar só, com
+  os mesmos interruptores da tela inicial, e um link discreto para este
+  código-fonte
 - **Importação por QR Code**: o mesmo QR usado para cadastrar o Google
   Authenticator preenche usuário e seed (arquivo de imagem ou print colado)
 - **Instância única**: abrir o exe de novo só restaura a janela existente

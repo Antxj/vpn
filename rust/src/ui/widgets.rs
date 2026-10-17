@@ -2,6 +2,25 @@
 
 use super::*;
 
+/// Small, discreet checkbox with a small label (e.g. "on open" under a
+/// connection's switch).
+pub(super) fn caixa_pequena(
+    ui: &mut egui::Ui,
+    marcada: &mut bool,
+    texto: &str,
+    cor: egui::Color32,
+) -> egui::Response {
+    ui.scope(|ui| {
+        let s = ui.spacing_mut();
+        s.icon_width = 12.0;
+        s.icon_width_inner = 6.0;
+        s.icon_spacing = 4.0;
+        s.interact_size.y = 14.0;
+        ui.checkbox(marcada, egui::RichText::new(texto).small().color(cor))
+    })
+    .inner
+}
+
 /// Drawn toggle switch: on = blue.
 pub(super) fn toggle(ui: &mut egui::Ui, ligado: bool, habilitado: bool) -> egui::Response {
     let tamanho = egui::vec2(44.0, 24.0);

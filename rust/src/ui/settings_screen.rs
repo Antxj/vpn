@@ -73,28 +73,6 @@ impl App {
                     ) {
                         m.salvar_iniciar_minimizado(minimizado);
                     }
-
-                    ui.add_space(6.0);
-                    ui.separator();
-                    ui.label(
-                        egui::RichText::new(tr!("Conectar ao abrir", "Connect on open"))
-                            .color(ui.visuals().strong_text_color()),
-                    );
-                    ui.label(pequeno(tr!(
-                        "Estas contas conectam sozinhas sempre que o app abre.",
-                        "These accounts connect by themselves whenever the app opens."
-                    )));
-                    ui.add_space(2.0);
-                    let contas = m.contas();
-                    if contas.is_empty() {
-                        ui.label(pequeno(tr!("Nenhuma conta cadastrada.", "No accounts yet.")));
-                    }
-                    for conta in contas {
-                        let mut ligado = conta.conectar_ao_abrir;
-                        if linha_toggle(ui, dark, conta.nome_exibicao(), "", &mut ligado, true) {
-                            m.definir_conectar_ao_abrir(&conta.id, ligado);
-                        }
-                    }
                 });
 
                 // ------------------------------------------------ notifications

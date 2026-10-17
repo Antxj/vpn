@@ -101,7 +101,7 @@ impl App {
                             ui.horizontal(|ui| {
                                 // the text never invades the toggle's space:
                                 // whatever does not fit ends with an ellipsis
-                                let largura_texto = (ui.available_width() - 64.0).max(80.0);
+                                let largura_texto = (ui.available_width() - 96.0).max(80.0);
                                 let fraco = label_color(self.dark);
                                 ui.vertical(|ui| {
                                     ui.set_max_width(largura_texto);
@@ -161,17 +161,43 @@ impl App {
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
                                         let ocupada = e.situacao == Situacao::Desconectando;
-                                        let r =
-                                            toggle(ui, ligada, !ocupada).on_hover_text(if ligada {
-                                                tr!("Desconectar", "Disconnect")
-                                            } else {
-                                                tr!("Conectar", "Connect")
-                                            });
-                                        if r.clicked() {
-                                            if let Err(err) = alternar_conta(&conta.id) {
-                                                erro = Some(err);
-                                            }
-                                        }
+                                        // the switch and, under it, "connect on open"
+                                        ui.allocate_ui_with_layout(
+                                            egui::vec2(90.0, 44.0),
+                                            egui::Layout::top_down(egui::Align::Max),
+                                            |ui| {
+                                                let r = toggle(ui, ligada, !ocupada).on_hover_text(
+                                                    if ligada {
+                                                        tr!("Desconectar", "Disconnect")
+                                                    } else {
+                                                        tr!("Conectar", "Connect")
+                                                    },
+                                                );
+                                                if r.clicked() {
+                                                    if let Err(err) = alternar_conta(&conta.id) {
+                                                        erro = Some(err);
+                                                    }
+                                                }
+                                                ui.add_space(-2.0);
+                                                let mut ao_abrir = conta.conectar_ao_abrir;
+                                                if caixa_pequena(
+                                                    ui,
+                                                    &mut ao_abrir,
+                                                    tr!("ao abrir", "on open"),
+                                                    label_color(self.dark),
+                                                )
+                                                .on_hover_text(tr!(
+                                                    "Conectar sozinha sempre que o app abre.",
+                                                    "Connect by itself whenever the app opens."
+                                                ))
+                                                .changed()
+                                                {
+                                                    engine::get().definir_conectar_ao_abrir(
+                                                        &conta.id, ao_abrir,
+                                                    );
+                                                }
+                                            },
+                                        );
                                     },
                                 );
                             });

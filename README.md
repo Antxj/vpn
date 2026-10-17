@@ -94,10 +94,11 @@ without user intervention.
   would work as the default route
 - **English or Portuguese**: follows the system language; either one can be
   set under **Settings** ⚙ › Language
+- **Connect on open**: the small "on open" box under each account's switch
+  makes it connect by itself whenever the app opens
 - **Settings** (⚙ button): start with Windows, start minimized in the tray,
-  which accounts connect when the app opens, theme, language and update
-  checks — all in one place, with the same switches as the home screen, and
-  a discreet link to this source code
+  theme, language and update checks — all in one place, with the same
+  switches as the home screen, and a discreet link to this source code
 - **QR code import**: the same QR code used to enroll Google Authenticator
   fills in the username and seed (image file or pasted screenshot)
 - **Single instance**: opening the exe again just restores the existing
