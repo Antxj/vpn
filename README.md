@@ -10,7 +10,7 @@
   <a href="https://github.com/Antxj/vpn/releases/latest"><img src="https://img.shields.io/github/v/release/Antxj/vpn?label=Download&style=for-the-badge&color=2563eb" alt="Download the latest version"></a>
 </p>
 
-Windows app (and, experimentally, [Linux](#linux) and [macOS](#macos)) that connects to one or
+App for Windows, [Linux](#linux) and [macOS](#macos) that connects to one or
 **several OpenVPN VPNs at the same time**, generating the Google Authenticator token automatically — no need to
 open the phone app for every connection. If a connection drops, it
 reconnects by itself with a fresh token.
@@ -157,43 +157,33 @@ click **More info** › **Run anyway**.
 
 ## Linux
 
-> **Experimental.** The Linux version is new: it was tested on Ubuntu 24.04
-> (including a real connection through a test OpenVPN server) and on a real
-> Linux computer, but it is not yet in everyday use by many people. Feedback
-> is welcome in the [Issues](../../issues).
-
 ![VPN on Linux](docs/en/linux.png)
 
 **Requirements**
 
-- A desktop with GTK 3 — Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint,
-  Pop!_OS and others (x86_64)
-- OpenVPN 2.6+ and polkit, from the distribution:
-  `sudo apt install openvpn` (Fedora: `sudo dnf install openvpn`)
-- A tray area: Ubuntu, KDE, Xfce, Cinnamon and MATE have one; on plain GNOME
-  install the *AppIndicator* extension
+- An x86_64 desktop with GTK 3 — Ubuntu 22.04+, Debian 12+, Fedora 36+,
+  Linux Mint, Pop!_OS and others
+- OpenVPN 2.6+ from your distribution: `sudo apt install openvpn`
+  (Fedora: `sudo dnf install openvpn`)
+- A tray area — built in on Ubuntu, KDE, Xfce, Cinnamon and MATE; on GNOME,
+  the *AppIndicator* extension
 - Optional, for the VPN's DNS servers: `sudo apt install openvpn-systemd-resolved`
 
 **Install**
 
-1. Download `VPN-linux-x86_64` from the [Releases](../../releases) page
+1. Download `VPN-linux-x86_64` from [Releases](../../releases)
 2. Make it executable and open it: `chmod +x VPN-linux-x86_64 && ./VPN-linux-x86_64`
-3. Add the accounts as on Windows
+3. Add your accounts
 
-On the **first connection**, the app asks for an administrator's password
-**once** (polkit). That authorization installs a small helper
-(`/usr/local/libexec/vpn-openvpn-helper`, a root-owned copy of the app) and
-adds your account to the `vpn-openvpn` group; from then on connections need
-no password — the same idea as the OpenVPN service on Windows. The helper
-only accepts the options the app itself uses and refuses `.ovpn` files that
-would run programs as root (`up`/`down` scripts, `plugin`, `iproute`…),
-read the password from a file, or read files outside the `.ovpn` folder.
-When the app ends (even if it crashes), the helper stops OpenVPN.
+**Security** — on the first connection, an administrator authorizes your
+account once (polkit). From then on, connections start without a password
+through a dedicated helper that only runs OpenVPN: it accepts only the app's
+own options, refuses configurations that would run programs with
+administrator rights, and stops OpenVPN as soon as the app closes. Saved
+accounts are encrypted with a key kept in your desktop keyring.
 
-The accounts are saved in `~/.config/vpn/contas.dat`, encrypted with a key
-kept in the desktop keyring (GNOME Keyring, KWallet). Everything else works
-as on Windows: several connections at once, automatic token, tray icon,
-notifications, start with the system, backup and updates.
+Everything else works as on Windows: several connections at once, automatic
+token, tray icon, notifications, start with the system, backup and updates.
 
 **Uninstall**: exit the app from the tray, delete the downloaded file and
 `~/.config/vpn`, then remove the authorization:
@@ -208,51 +198,33 @@ sudo gpasswd -d "$USER" vpn-openvpn
 
 ## macOS
 
-> **Experimental.** The macOS version is new: every build is tested by
-> GitHub on a Mac (including a real connection through a test OpenVPN
-> server), and it was also tested on a real Mac, but it is not yet in
-> everyday use by many people. Feedback is welcome in the
-> [Issues](../../issues).
-
 **Requirements**
 
-- macOS 11 (Big Sur) or later, on Apple Silicon (M1, M2…) or Intel
-- Nothing else: the app brings its own OpenVPN
+- macOS 11 (Big Sur) or later, on Apple Silicon or Intel
+- Nothing else — OpenVPN is included
 
 **Install**
 
-1. Download `VPN-macos.zip` from the [Releases](../../releases) page and open it
-2. Drag **VPN.app** to the **Applications** folder (important: run from the
-   download folder, macOS keeps it in a temporary copy and updates do not last)
-3. Open it from Applications. The app is not signed by Apple (that costs a
-   yearly fee), so the first time macOS blocks it: open **System Settings ›
-   Privacy & Security**, scroll down to *"VPN" was blocked…* and click
-   **Open Anyway**, then confirm. This is needed only once.
-4. Add the accounts as on Windows
+1. Download `VPN-macos.zip` from [Releases](../../releases) and open it
+2. Drag **VPN.app** to **Applications** and open it from there
+3. The first time, macOS asks you to confirm an app downloaded from the
+   internet: **System Settings › Privacy & Security › Open Anyway**
+4. Add your accounts
 
-On the **first connection**, the app asks for an administrator's password
-**once** (macOS's own password window). That authorization installs, owned by
-the system, OpenVPN and a small helper (a copy of the app) in
-`/Library/PrivilegedHelperTools`, and a `sudo` rule that lets your user run
-only that helper; from then on connections need no password — the same idea
-as the OpenVPN service on Windows. The helper only accepts the options the
-app itself uses and refuses `.ovpn` files that would run programs as root,
-read the password from a file, or read files outside the `.ovpn` folder.
-When the app ends (even if it crashes), the helper stops OpenVPN.
+**Security** — OpenVPN comes inside the app, built from the official source
+code with every component verified. On the first connection, an
+administrator authorizes your user once; from then on, connections start
+without a password through a dedicated helper installed in the system's
+protected area, with the same safeguards as on Linux. Saved accounts are
+encrypted with a key kept in the Keychain (after an update, macOS may ask
+once to allow it: choose **Always Allow**).
 
-The app's OpenVPN is built by GitHub from the official sources (OpenVPN,
-OpenSSL, LZO and LZ4, each checked by its SHA-256) — not Homebrew's, which
-belongs to your user and could be swapped by any program you run. The VPN's
-DNS servers are set with OpenVPN's own macOS script.
+Everything else works as on Windows: several connections at once, automatic
+token, menu bar icon, notifications, start with the system, backup and
+updates.
 
-The accounts are saved in `~/Library/Application Support/VPN/contas.dat`,
-encrypted with a key kept in the Keychain. After an update, macOS may ask
-once whether VPN can use that key: click **Always Allow**. Everything else
-works as on Windows: several connections at once, automatic token, icon in
-the menu bar, notifications, start with the system, backup and updates.
-
-**Uninstall**: quit the app from the menu bar icon, delete **VPN.app** and the
-folder `~/Library/Application Support/VPN`, then remove the authorization:
+**Uninstall**: quit the app from the menu bar icon, delete **VPN.app** and
+`~/Library/Application Support/VPN`, then remove the authorization:
 
 ```bash
 sudo rm -f /Library/PrivilegedHelperTools/io.github.antxj.vpn.helper /Library/PrivilegedHelperTools/io.github.antxj.vpn.openvpn /Library/PrivilegedHelperTools/io.github.antxj.vpn.dns-updown /etc/sudoers.d/vpn-openvpn ~/Library/LaunchAgents/io.github.antxj.vpn.plist
