@@ -1,6 +1,8 @@
-# Image generators (tools/make_icon.py, tools/make_github_mark.py): kept as
-# the source of the icons, but not counted in the repository languages.
+# Helper scripts (image generators, build and test scripts) are part of the
+# repository but not counted in its languages: the app itself is Rust.
 tools/*.py linguist-detectable=false
+*.sh linguist-detectable=false
+*.ps1 linguist-detectable=false
 
 # shell scripts run on Linux: always LF, even in a Windows checkout
 *.sh text eol=lf
