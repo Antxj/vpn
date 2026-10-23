@@ -32,9 +32,9 @@ $env:CARGO_ENCODED_RUSTFLAGS = $remapFlags -join $separator
 # --- official OpenVPN installer embedded in the executable -----------------
 # The MSI is not in the repository: it is downloaded from the official server
 # and verified by SHA-256 (and by its Authenticode signature) before going in.
-$msiVersao = "2.7.6-I001"
+$msiVersao = "2.7.8-I002"
 $msiUrl = "https://build.openvpn.net/downloads/releases/OpenVPN-$msiVersao-amd64.msi"
-$msiSha256 = "48C96AC092A81C6303F059EACE51C7BF878794E9575B329E82894848E0E529FC"
+$msiSha256 = "33104DD02C48CBA172612882B1AF6276422B1B4340D4C9C84DD2AFB4B356FE9F"
 $msiPath = Join-Path $crateRoot "assets\openvpn.msi"
 
 if (-not (Test-Path $msiPath) -or

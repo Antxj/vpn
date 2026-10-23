@@ -8,7 +8,7 @@ file. Source code: https://github.com/Antxj/vpn
 OpenVPN Community Edition
 -------------------------
 The VPN.exe executable embeds the official OpenVPN Community installer
-(OpenVPN-2.7.6-I001-amd64.msi), redistributed without any modification,
+(OpenVPN-2.7.8-I002-amd64.msi), redistributed without any modification,
 exactly as published by OpenVPN Inc. at:
 
     https://build.openvpn.net/downloads/releases/
@@ -20,7 +20,7 @@ The Linux file (VPN-linux-x86_64) does not include OpenVPN: it uses the
 openvpn package installed from the user's distribution.
 
 The macOS file (VPN-macos.zip) includes an openvpn executable built from
-the official OpenVPN 2.7.6 source (link below) by rust/build-release-macos.sh
+the official OpenVPN 2.7.8 source (link below) by rust/build-release-macos.sh
 in this repository, without modifications, statically linked with:
 
 - OpenSSL 3.5.9 - Apache License 2.0
@@ -44,7 +44,7 @@ version 2 (GPLv2). Full license text:
 
 Source code corresponding to the distributed binary:
 
-    https://build.openvpn.net/downloads/releases/openvpn-2.7.6.tar.gz
+    https://build.openvpn.net/downloads/releases/openvpn-2.7.8.tar.gz
 
 Trademarks: "OpenVPN" is a registered trademark of OpenVPN Inc. This app
 is not produced, sponsored or endorsed by OpenVPN Inc.; it only uses and

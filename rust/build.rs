@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 /// MSI version expected in assets/openvpn.msi (kept in sync with
 /// build-release.ps1, which downloads it and verifies the hash).
-const MSI_VERSION: &str = "2.7.6-I001";
+const MSI_VERSION: &str = "2.7.8-I002";
 
 /// Copies `origem` to OUT_DIR/`nome` (include_bytes! needs a path that always
 /// exists: when the file is missing, an empty one is written).
