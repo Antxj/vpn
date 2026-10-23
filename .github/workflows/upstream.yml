@@ -1,0 +1,56 @@
+# Once a month: checks whether OpenVPN (Windows installer and macOS build),
+# OpenSSL, LZO or LZ4 have new versions upstream - the components the build
+# scripts pin by hand, which Dependabot does not see. When something is
+# outdated, opens an issue (or updates the one already open); nothing is
+# changed in the code by itself.
+#
+# Third-party actions are pinned by commit hash (not by tag, which can be
+# moved).
+
+name: upstream
+
+on:
+  schedule:
+    - cron: "0 9 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write # open or update the issue
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare pinned versions with upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          titulo="Upstream updates: OpenVPN / OpenSSL / LZO / LZ4"
+          set +e
+          bash .github/scripts/check-upstream.sh > relatorio.md
+          codigo=$?
+          set -e
+          cat relatorio.md
+          cat relatorio.md >> "$GITHUB_STEP_SUMMARY"
+          if [ $codigo -eq 0 ]; then
+            exit 0
+          fi
+          if [ $codigo -ne 10 ]; then
+            echo "Could not check the upstream versions (exit $codigo)." >&2
+            exit 1
+          fi
+          aberta=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$titulo\" in:title" \
+            --json number,title -q ".[] | select(.title == \"$titulo\") | .number" | head -1)
+          if [ -n "$aberta" ]; then
+            gh issue edit "$aberta" --repo "$GITHUB_REPOSITORY" --body-file relatorio.md
+            echo "Issue #$aberta updated." >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$titulo" --body-file relatorio.md
+          fi
