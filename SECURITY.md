@@ -44,8 +44,3 @@ Of particular interest:
 
 Vulnerabilities in OpenVPN itself should be reported to the
 [OpenVPN project](https://community.openvpn.net/openvpn/wiki/SecurityAnnouncements).
-
----
-
-**Português:** não abra issue pública para problemas de segurança. Use a aba
-**Security** › **Report a vulnerability** deste repositório.
