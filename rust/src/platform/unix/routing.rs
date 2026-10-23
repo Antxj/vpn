@@ -16,14 +16,14 @@ pub fn interface_do_ip(ip: Ipv4Addr) -> Option<u32> {
         return None;
     }
     let mut achado = None;
-    let mut atual = lista;
-    while !atual.is_null() {
-        let item = unsafe { &*atual };
-        if !item.ifa_addr.is_null()
-            && i32::from(unsafe { (*item.ifa_addr).sa_family }) == libc::AF_INET
-        {
-            let sin = unsafe { &*(item.ifa_addr as *const libc::sockaddr_in) };
-            if Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr)) == ip {
+    // as_ref: None for a null pointer (the end of the list, an interface
+    // without an address)
+    let mut atual = unsafe { lista.as_ref() };
+    while let Some(item) = atual {
+        let address = unsafe { item.ifa_addr.as_ref() };
+        if address.is_some_and(|e| i32::from(e.sa_family) == libc::AF_INET) {
+            let sin = unsafe { (item.ifa_addr as *const libc::sockaddr_in).as_ref() };
+            if sin.is_some_and(|s| Ipv4Addr::from(u32::from_be(s.sin_addr.s_addr)) == ip) {
                 achado = Some(
                     unsafe { std::ffi::CStr::from_ptr(item.ifa_name) }
                         .to_string_lossy()
@@ -32,8 +32,21 @@ pub fn interface_do_ip(ip: Ipv4Addr) -> Option<u32> {
                 break;
             }
         }
-        atual = item.ifa_next;
+        atual = unsafe { item.ifa_next.as_ref() };
     }
     unsafe { libc::freeifaddrs(lista) };
     indice_da_interface(&achado?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interface_of_an_address() {
+        // the loopback address is always on an interface (lo / lo0)
+        assert!(interface_do_ip(Ipv4Addr::LOCALHOST).is_some());
+        // a documentation address (TEST-NET-3) is on none
+        assert_eq!(interface_do_ip(Ipv4Addr::new(203, 0, 113, 77)), None);
+    }
 }

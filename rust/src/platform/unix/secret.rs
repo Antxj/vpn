@@ -60,16 +60,18 @@ fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
+/// The 32-byte key written by `hex` (None if it is not exactly that).
 fn de_hex(s: &str) -> Option<[u8; 32]> {
     let s = s.trim();
     if s.len() != 64 {
         return None;
     }
-    let mut k = [0u8; 32];
-    for (i, par) in s.as_bytes().chunks(2).enumerate() {
-        k[i] = u8::from_str_radix(std::str::from_utf8(par).ok()?, 16).ok()?;
-    }
-    Some(k)
+    let bytes = s
+        .as_bytes()
+        .chunks(2)
+        .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).ok()?, 16).ok())
+        .collect::<Option<Vec<u8>>>()?;
+    bytes.try_into().ok()
 }
 
 fn nova_chave() -> Option<[u8; 32]> {
@@ -194,4 +196,18 @@ pub fn unprotect(dados: &[u8]) -> Option<Vec<u8>> {
         .ok()?
         .decrypt(&Nonce::from(nonce), &dados[cabecalho..])
         .ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hex_key_round_trip() {
+        let k = nova_chave().unwrap();
+        assert_eq!(de_hex(&hex(&k)), Some(k));
+        assert_eq!(de_hex(&format!("  {}\n", hex(&k))), Some(k));
+        assert_eq!(de_hex(&hex(&k)[..62]), None);
+        assert_eq!(de_hex(&"zz".repeat(32)), None);
+    }
 }
