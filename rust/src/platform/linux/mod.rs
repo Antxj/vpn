@@ -3,6 +3,7 @@
 
 pub mod desktop;
 pub mod dialogs;
+mod dns;
 pub mod locale;
 pub mod openvpn;
 pub mod paths;

@@ -19,6 +19,55 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const MAX_AUTH_FAILURES: u32 = 3;
+
+/// Prefix of the line the Linux helper writes to the OpenVPN log about the
+/// VPN's DNS (platform/linux/dns.rs): "vpn-dns: applied resolver=...
+/// servers=10.0.0.45,10.0.0.46 domains=example.org".
+pub const DNS_LOG_PREFIX: &str = "vpn-dns:";
+
+/// The last `vpn-dns:` line of the OpenVPN log, as a message for the app's
+/// log. None when there is none (Windows and macOS apply the DNS by themselves).
+fn dns_report(log: &str) -> Option<String> {
+    let line = log
+        .lines()
+        .rev()
+        .find_map(|l| l.trim().strip_prefix(DNS_LOG_PREFIX))?
+        .trim();
+    let field = |name: &str| {
+        line.split_whitespace()
+            .find_map(|p| p.strip_prefix(name))
+            .filter(|v| *v != "-")
+            .map(|v| v.replace(',', ", "))
+    };
+    let servers = field("servers=").unwrap_or_default();
+    let target = match field("domains=") {
+        Some(domains) => format!("{servers} ({domains})"),
+        None => servers,
+    };
+    let error = line
+        .split_once("error=")
+        .map(|(_, e)| e.trim().to_string())
+        .unwrap_or_default();
+    Some(match line.split_whitespace().next()? {
+        "applied" => trf!("DNS da VPN aplicado: {target}", "VPN DNS applied: {target}"),
+        "none" => tr!(
+            "O servidor não enviou DNS: os nomes usam o DNS da sua rede.",
+            "The server sent no DNS: names use your network's DNS."
+        )
+        .to_string(),
+        "not-applied" => trf!(
+            "O servidor enviou DNS ({target}), mas este Linux não tem systemd-resolved nem \
+             resolvconf para aplicá-lo: endereços internos podem não abrir.",
+            "The server sent DNS ({target}), but this Linux has neither systemd-resolved nor \
+             resolvconf to apply it: internal addresses may not open."
+        ),
+        "failed" => trf!(
+            "Não consegui aplicar o DNS da VPN ({target}): {error}",
+            "Could not apply the VPN DNS ({target}): {error}"
+        ),
+        _ => return None,
+    })
+}
 /// Time without an answer from the server before the "not responding" notice.
 const SEM_RESPOSTA: Duration = Duration::from_secs(30);
 /// How long a connection that was up may stay down before the "dropped"
@@ -758,6 +807,12 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
                 }
                 state::definir(&conta.id, situacao, ip);
                 state::log(nome, texto_do_estado(&parts));
+                if situacao == Situacao::Conectado {
+                    let log = std::fs::read_to_string(log_path(&conta.id)).unwrap_or_default();
+                    if let Some(report) = dns_report(&log) {
+                        state::log(nome, report);
+                    }
+                }
             } else if line.starts_with(">INFO:")
                 || line.starts_with("ERROR:")
                 || line.starts_with(">FATAL:")
@@ -825,6 +880,30 @@ fn run(conta: &Conta, nome: &str, stop: &AtomicBool) -> Option<Repetir> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// (Portuguese or English, whichever the tests run in: only the data is checked.)
+    #[test]
+    fn dns_report_from_the_log() {
+        let log = "2026-10-30 Initialization Sequence Completed
+                   vpn-dns: applied resolver=systemd-resolved servers=10.0.0.45,10.0.0.46 domains=example.org
+";
+        assert!(dns_report(log)
+            .unwrap()
+            .ends_with(": 10.0.0.45, 10.0.0.46 (example.org)"));
+        assert!(
+            dns_report("vpn-dns: applied resolver=resolvconf servers=10.0.0.45 domains=-")
+                .unwrap()
+                .ends_with(": 10.0.0.45")
+        );
+        assert!(dns_report("vpn-dns: none").unwrap().contains("DNS"));
+        assert!(dns_report(
+            "vpn-dns: failed resolver=systemd-resolved servers=10.0.0.45 domains=- error=Link not found"
+        )
+        .unwrap()
+        .ends_with("(10.0.0.45): Link not found"));
+        assert_eq!(dns_report("OpenVPN 2.7.8 Windows"), None);
+        assert_eq!(dns_report("vpn-dns: something-new"), None);
+    }
 
     #[test]
     fn estado_conectado_mostra_ip_e_servidor() {

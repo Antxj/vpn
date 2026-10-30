@@ -7,8 +7,8 @@
 //!   joins GROUP, and a polkit rule lets members of GROUP run HELPER with
 //!   pkexec without a password.
 //! - Each connection runs `pkexec HELPER --openvpn-helper <dir> <options>`,
-//!   with the distribution's openvpn and `--script-security 1` (2 with the
-//!   distribution's systemd-resolved script, for the VPN's DNS).
+//!   with the distribution's openvpn. HELPER itself is openvpn's up/down
+//!   script, only to apply the DNS the server pushes (dns.rs).
 
 use crate::platform::unix::helper::{self, Execucao};
 use std::path::Path;
@@ -29,7 +29,7 @@ const REGRA_PKLA: &str = "/etc/polkit-1/localauthority/50-local.d/49-vpn-openvpn
 /// Version of the helper's rules. Raise it whenever the helper changes: the
 /// app then asks for the one-time authorization again (installing the new
 /// copy). App updates that do not touch the helper ask for nothing.
-pub const VERSAO_DO_AJUDANTE: u32 = 1;
+pub const VERSAO_DO_AJUDANTE: u32 = 2;
 const PKEXEC: &str = "/usr/bin/pkexec";
 
 /// Why OpenVPN could not be started.
@@ -259,16 +259,6 @@ fn openvpn_do_sistema() -> Option<&'static str> {
     .find(|p| helper::do_root_e_protegido(p))
 }
 
-/// DNS of the VPN: the distribution's script for systemd-resolved, when installed.
-fn script_de_dns() -> Option<&'static str> {
-    [
-        "/etc/openvpn/update-systemd-resolved",
-        "/etc/openvpn/scripts/update-systemd-resolved",
-    ]
-    .into_iter()
-    .find(|p| helper::do_root_e_protegido(p))
-}
-
 /// The helper itself (as root, through pkexec). Returns the exit code.
 pub fn executar_helper(args: &[String]) -> i32 {
     helper::codigo_de_saida(helper(args))
@@ -277,18 +267,16 @@ pub fn executar_helper(args: &[String]) -> i32 {
 fn helper(args: &[String]) -> Result<i32, String> {
     let (uid, _) = chamador().ok_or("PKEXEC_UID")?;
     let openvpn = openvpn_do_sistema().ok_or("openvpn is not installed")?;
-    let extras = match script_de_dns() {
-        Some(script) => vec![
-            "--script-security".into(),
-            "2".into(),
-            "--up".into(),
-            script.into(),
-            "--down".into(),
-            script.into(),
-            "--down-pre".into(),
-        ],
-        None => vec!["--script-security".into(), "1".into()],
-    };
+    // the VPN's DNS: this same root-owned executable is the up/down script
+    // (the .ovpn cannot bring scripts of its own: see unix/helper.rs)
+    let extras = vec![
+        "--script-security".into(),
+        "2".into(),
+        "--up".into(),
+        format!("{HELPER} {} up", super::dns::ARG_DNS_HOOK),
+        "--down".into(),
+        format!("{HELPER} {} down", super::dns::ARG_DNS_HOOK),
+    ];
     helper::executar_openvpn(
         args,
         Execucao {
@@ -328,6 +316,7 @@ pub fn tratar_argumentos_especiais() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some(ARG_HELPER) => std::process::exit(executar_helper(&args[2..])),
+        Some(super::dns::ARG_DNS_HOOK) => std::process::exit(super::dns::hook(&args[2..])),
         Some(ARG_VERSAO_DO_AJUDANTE) => {
             println!("{VERSAO_DO_AJUDANTE}");
             std::process::exit(0);

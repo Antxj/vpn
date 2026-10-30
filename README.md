@@ -166,7 +166,6 @@ click **More info** › **Run anyway**.
   (Fedora: `sudo dnf install openvpn`)
 - A tray area — built in on Ubuntu, KDE, Xfce, Cinnamon and MATE; on GNOME,
   the *AppIndicator* extension
-- Optional, for the VPN's DNS servers: `sudo apt install openvpn-systemd-resolved`
 
 **Install**
 
@@ -180,6 +179,11 @@ through a dedicated helper that only runs OpenVPN: it accepts only the app's
 own options, refuses configurations that would run programs with
 administrator rights, and stops OpenVPN as soon as the app closes. Saved
 accounts are encrypted with a key kept in your desktop keyring.
+
+**Internal names** — the DNS servers and domains the VPN sends are applied
+automatically (through systemd-resolved, or resolvconf), so company names
+such as an internal Git or intranet resolve to their internal addresses
+while connected, exactly as on Windows.
 
 Everything else works as on Windows: several connections at once, automatic
 token, tray icon, notifications, start with the system, backup and updates.

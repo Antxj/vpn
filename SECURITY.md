@@ -35,8 +35,9 @@ Of particular interest:
   elevated helper that authorizes a Windows account (`--authorize-openvpn-user`);
 - on Linux, the root helper run through pkexec
   (`/usr/local/libexec/vpn-openvpn-helper --openvpn-helper`): the options and
-  `.ovpn` directives it accepts, and the polkit rule installed by the one-time
-  authorization;
+  `.ovpn` directives it accepts, the polkit rule installed by the one-time
+  authorization, and how it applies the DNS settings pushed by the server
+  (`--vpn-dns`, run by OpenVPN as root);
 - on macOS, the root helper run through sudo
   (`/Library/PrivilegedHelperTools/io.github.antxj.vpn.helper --openvpn-helper`),
   the sudo rule and the root-owned OpenVPN installed by the one-time
