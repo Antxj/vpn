@@ -181,9 +181,8 @@ administrator rights, and stops OpenVPN as soon as the app closes. Saved
 accounts are encrypted with a key kept in your desktop keyring.
 
 **Internal names** — the DNS servers and domains the VPN sends are applied
-automatically (through systemd-resolved, or resolvconf), so company names
-such as an internal Git or intranet resolve to their internal addresses
-while connected, exactly as on Windows.
+automatically (through systemd-resolved, or resolvconf), so internal names
+resolve to their internal addresses while connected, exactly as on Windows.
 
 Everything else works as on Windows: several connections at once, automatic
 token, tray icon, notifications, start with the system, backup and updates.
