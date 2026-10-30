@@ -2,7 +2,12 @@
 //! viewport commands), and closing it to the tray.
 
 use crate::*;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// There is a tray icon to bring the window back. False on a Linux desktop
+/// without the AppIndicator library (desktop.rs): the window is then
+/// minimized instead of hidden, or there would be no way to reopen it.
+pub static TRAY_AVAILABLE: AtomicBool = AtomicBool::new(true);
 
 /// Shows the main window (from the tray, a notification or a second instance).
 pub fn show_main_window() {
@@ -16,6 +21,11 @@ pub fn show_main_window() {
 }
 
 fn esconder(ctx: &egui::Context) {
+    if !TRAY_AVAILABLE.load(Ordering::SeqCst) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+        return;
+    }
     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
     MAIN_WINDOW_VISIBLE.store(false, Ordering::SeqCst);
 }
@@ -33,7 +43,8 @@ pub fn por_quadro(ctx: &egui::Context) {
     if ctx.input(|i| i.viewport().close_requested()) {
         ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         esconder(ctx);
-        if !TRAY_HINT_SHOWN.swap(true, Ordering::SeqCst)
+        if TRAY_AVAILABLE.load(Ordering::SeqCst)
+            && !TRAY_HINT_SHOWN.swap(true, Ordering::SeqCst)
             && std::env::var_os("VPN_SKIP_HINT").is_none()
         {
             crate::platform::desktop::notificacao(

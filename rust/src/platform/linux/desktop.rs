@@ -60,6 +60,24 @@ pub(super) fn na_thread_gtk<T: Send + 'static>(
 /// Creates the tray icon on the GTK thread and keeps it up to date every
 /// second (also while the window is hidden and egui is idle).
 pub fn iniciar_bandeja() {
+    // tray-icon aborts the whole app when the library is missing (some
+    // Fedora and Debian GNOME installs): without it, no icon, and the app
+    // says how to get it
+    if !tray_library_available() {
+        crate::platform::unix::window::TRAY_AVAILABLE.store(false, Ordering::SeqCst);
+        state::log(
+            "",
+            tr!(
+                "Sem ícone na bandeja: falta a biblioteca AppIndicator neste Linux \
+                 (pacote libayatana-appindicator3-1 ou libappindicator-gtk3). Fechar \
+                 a janela só a minimiza.",
+                "No tray icon: this Linux lacks the AppIndicator library (package \
+                 libayatana-appindicator3-1 or libappindicator-gtk3). Closing the \
+                 window only minimizes it."
+            ),
+        );
+        return;
+    }
     na_thread_gtk(|| {
         criar_bandeja();
         apply_tray_state();
@@ -68,6 +86,29 @@ pub fn iniciar_bandeja() {
             gtk::glib::ControlFlow::Continue
         });
     });
+}
+
+/// The AppIndicator library tray-icon loads at run time (the same names,
+/// in the same order).
+fn tray_library_available() -> bool {
+    [
+        "libayatana-appindicator3.so.1",
+        "libappindicator3.so.1",
+        "libayatana-appindicator3.so",
+        "libappindicator3.so",
+    ]
+    .iter()
+    .any(|name| {
+        let Ok(name) = std::ffi::CString::new(*name) else {
+            return false;
+        };
+        let handle = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_LAZY) };
+        if handle.is_null() {
+            return false;
+        }
+        unsafe { libc::dlclose(handle) };
+        true
+    })
 }
 
 // --------------------------------------------------------- notifications --
