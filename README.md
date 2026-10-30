@@ -188,6 +188,28 @@ while connected, exactly as on Windows.
 Everything else works as on Windows: several connections at once, automatic
 token, tray icon, notifications, start with the system, backup and updates.
 
+### Updating OpenVPN on Linux
+
+Ubuntu 22.04, Linux Mint 21 and other older releases ship OpenVPN 2.5, no
+longer maintained by the OpenVPN project; VPN shows a notice when it finds
+it. On Ubuntu, Linux Mint and Debian, install the current version from the
+OpenVPN project's official repository:
+
+```bash
+sudo mkdir -p /etc/apt/keyrings && wget -qO- https://swupdate.openvpn.net/repos/repo-public.gpg | sudo gpg --dearmor --yes -o /etc/apt/keyrings/openvpn-repo-public.gpg
+```
+
+```bash
+echo "deb [signed-by=/etc/apt/keyrings/openvpn-repo-public.gpg] https://build.openvpn.net/debian/openvpn/release/2.6 $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") main" | sudo tee /etc/apt/sources.list.d/openvpn.list
+```
+
+```bash
+sudo apt update && sudo apt install openvpn
+```
+
+Fedora and other distributions already ship a current OpenVPN: just keep
+the system up to date.
+
 **Uninstall**: exit the app from the tray, delete the downloaded file and
 `~/.config/vpn`, then remove the authorization:
 

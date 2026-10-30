@@ -18,3 +18,5 @@ pub fn is_available() -> bool {
 }
 
 pub fn install_in_background(_tx: Sender<Event>, _ctx: eframe::egui::Context) {}
+
+pub fn update_in_background(_tx: Sender<Event>, _ctx: eframe::egui::Context) {}

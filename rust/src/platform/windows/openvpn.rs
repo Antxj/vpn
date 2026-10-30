@@ -66,3 +66,23 @@ pub fn pastas_de_config() -> Vec<PathBuf> {
     dirs.push(PathBuf::from(r"C:\Program Files\OpenVPN\config"));
     dirs
 }
+
+/// No minimum to warn about: the app updates OpenVPN itself (the installer
+/// inside it, see openvpn_version.rs).
+pub const RECOMMENDED_MINIMUM: Option<crate::openvpn_version::Version> = None;
+
+/// Where to read how to update OpenVPN (not used: the app updates it).
+pub const UPDATE_HELP_URL: &str = PAGINA_DE_DOWNLOAD;
+
+/// The text of `openvpn --version` (without flashing a console window).
+pub fn version_output(path: &std::path::Path) -> Option<String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let output = std::process::Command::new(path)
+        .arg("--version")
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}

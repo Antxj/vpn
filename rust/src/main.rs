@@ -13,6 +13,7 @@ mod accounts;
 mod backup;
 mod dialogs;
 mod engine;
+mod openvpn_version;
 mod qr;
 mod routes;
 mod settings;

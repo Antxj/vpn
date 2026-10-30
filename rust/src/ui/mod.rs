@@ -18,6 +18,8 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
+use crate::openvpn_version::Advice;
+
 use backup_window::*;
 use editor::*;
 use home::*;
@@ -83,6 +85,12 @@ pub(crate) struct App {
     openvpn_missing: bool,
     last_ovpn_check: Instant,
     installing: bool,
+    /// The running installation is an update of the installed OpenVPN.
+    updating_openvpn: bool,
+    /// What to tell about the installed OpenVPN version (old, update available).
+    openvpn_advice: Advice,
+    /// "Not now" on that notice (until the app opens again).
+    advice_dismissed: bool,
     install_rx: Receiver<installer::Event>,
     install_tx: Sender<installer::Event>,
     backup: Option<JanelaBackup>,
@@ -186,6 +194,9 @@ impl App {
             openvpn_missing: find_openvpn().is_none(),
             last_ovpn_check: Instant::now(),
             installing: false,
+            updating_openvpn: false,
+            openvpn_advice: current_openvpn_advice(),
+            advice_dismissed: false,
             install_rx,
             install_tx,
             logo_github,
@@ -240,6 +251,40 @@ impl App {
         installer::install_in_background(self.install_tx.clone(), eframe_ctx());
     }
 
+    /// Updates the installed OpenVPN with the installer inside the app (Windows).
+    fn start_openvpn_update(&mut self) {
+        let Advice::UpdateAvailable { installed, bundled } = self.openvpn_advice else {
+            return;
+        };
+        if self.installing {
+            return;
+        }
+        let question = trf!(
+            "Atualizar o OpenVPN da versão {installed} para a {bundled}?\n\n\
+             As conexões do OpenVPN deste computador (inclusive as de outros \
+             programas) são desligadas durante a atualização, que leva cerca de \
+             um minuto. O Windows vai pedir permissão de administrador.",
+            "Update OpenVPN from version {installed} to {bundled}?\n\n\
+             This computer's OpenVPN connections (including those of other \
+             programs) are disconnected during the update, which takes about a \
+             minute. Windows will ask for administrator permission."
+        );
+        if !dialogs::sim_nao(&question, dialogs::Nivel::Info) {
+            return;
+        }
+        engine::get().desconectar_todas();
+        self.installing = true;
+        self.updating_openvpn = true;
+        state::log(
+            "",
+            trf!(
+                "Atualizando o OpenVPN para a versão {bundled}... (cerca de um minuto)",
+                "Updating OpenVPN to version {bundled}... (about a minute)"
+            ),
+        );
+        installer::update_in_background(self.install_tx.clone(), eframe_ctx());
+    }
+
     /// Shows the connection error; when OpenVPN is missing, offers to install it.
     fn tratar_erro(&mut self, erro: ErroConexao) {
         if erro != ErroConexao::OpenVpnAusente {
@@ -292,6 +337,11 @@ impl App {
                     self.installing = false;
                     self.openvpn_missing = find_openvpn().is_none();
                     self.last_ovpn_check = Instant::now();
+                    self.openvpn_advice = current_openvpn_advice();
+                    if std::mem::take(&mut self.updating_openvpn) {
+                        self.update_finished(result);
+                        continue;
+                    }
                     match result {
                         Ok(_) if self.openvpn_missing => {
                             state::log(
@@ -346,6 +396,45 @@ impl App {
         if self.last_ovpn_check.elapsed() >= OPENVPN_CHECK_INTERVAL {
             self.last_ovpn_check = Instant::now();
             self.openvpn_missing = find_openvpn().is_none();
+        }
+    }
+
+    /// Result of an OpenVPN update.
+    fn update_finished(&mut self, result: Result<bool, String>) {
+        match result {
+            Ok(restart) => {
+                let version = find_openvpn()
+                    .and_then(|p| crate::openvpn_version::installed(&p))
+                    .map(|v| v.to_string())
+                    .unwrap_or_default();
+                state::log(
+                    "",
+                    trf!(
+                        "OpenVPN atualizado para a versão {version}.",
+                        "OpenVPN updated to version {version}."
+                    ),
+                );
+                if restart {
+                    state::log(
+                        "",
+                        tr!(
+                            "O Windows pediu reinicialização; se a conexão falhar, reinicie.",
+                            "Windows requested a restart; if the connection fails, restart."
+                        ),
+                    );
+                }
+            }
+            Err(msg) => {
+                state::log(
+                    "",
+                    trf!("Falha na atualização: {msg}", "Update failed: {msg}"),
+                );
+                show_main_window();
+                error_box(&trf!(
+                    "Não foi possível atualizar o OpenVPN.\n\n{msg}",
+                    "Could not update OpenVPN.\n\n{msg}"
+                ));
+            }
         }
     }
 
@@ -445,7 +534,96 @@ impl App {
                 self.start_openvpn_install();
             }
         }
+
+        // old OpenVPN (Linux) or a newer one inside the app (Windows)
+        if !self.openvpn_missing && !self.advice_dismissed {
+            let (text, primary) = match self.openvpn_advice {
+                Advice::Nothing => (String::new(), ""),
+                Advice::UpdateAvailable { installed, bundled } => (
+                    if self.updating_openvpn {
+                        trf!(
+                            "Atualizando o OpenVPN para a versão {bundled}...\n\
+                             Isso leva cerca de um minuto.",
+                            "Updating OpenVPN to version {bundled}...\n\
+                             This takes about a minute."
+                        )
+                    } else {
+                        trf!(
+                            "OpenVPN {installed} instalado. O app traz a\n\
+                             versão {bundled}, com correções de segurança.",
+                            "OpenVPN {installed} installed. The app brings\n\
+                             version {bundled}, with security fixes."
+                        )
+                    },
+                    tr!("Atualizar", "Update"),
+                ),
+                Advice::Outdated {
+                    installed,
+                    recommended,
+                } => (
+                    trf!(
+                        "O OpenVPN {installed} deste computador é antigo:\n\
+                         algumas VPNs podem não funcionar. Use o {recommended}+.",
+                        "This computer's OpenVPN {installed} is old:\n\
+                         some VPNs may not work. Use {recommended}+."
+                    ),
+                    tr!("Como atualizar", "How to update"),
+                ),
+            };
+            if !text.is_empty() {
+                let busy = self.installing;
+                let (mut act, mut dismiss) = (false, false);
+                // the text above, the buttons on a row below (two buttons do
+                // not fit beside a two-line text)
+                egui::Frame::none()
+                    .fill(bg)
+                    .rounding(6.0)
+                    .inner_margin(egui::Margin::same(10.0))
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.colored_label(fg, &text);
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if busy {
+                                        ui.spinner();
+                                        return;
+                                    }
+                                    let btn = egui::Button::new(
+                                        egui::RichText::new(primary).color(egui::Color32::WHITE),
+                                    )
+                                    .fill(ACCENT);
+                                    act = ui.add(btn).clicked();
+                                    dismiss =
+                                        ui.small_button(tr!("Agora não", "Not now")).clicked();
+                                },
+                            );
+                        });
+                    });
+                ui.add_space(8.0);
+                if dismiss {
+                    self.advice_dismissed = true;
+                }
+                if act {
+                    match self.openvpn_advice {
+                        Advice::UpdateAvailable { .. } => self.start_openvpn_update(),
+                        _ => {
+                            let _ = open::that(platform::openvpn::UPDATE_HELP_URL);
+                        }
+                    }
+                }
+            }
+        }
     }
+}
+
+/// What to tell about the installed OpenVPN (runs `openvpn --version`).
+fn current_openvpn_advice() -> Advice {
+    crate::openvpn_version::advice(
+        find_openvpn().and_then(|p| crate::openvpn_version::installed(&p)),
+    )
 }
 
 impl eframe::App for App {

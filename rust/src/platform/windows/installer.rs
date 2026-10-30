@@ -36,13 +36,25 @@ fn log_path() -> PathBuf {
 /// permission (UAC) at this moment.
 pub fn install_in_background(tx: Sender<Event>, ctx: eframe::egui::Context) {
     std::thread::spawn(move || {
-        let result = install();
+        let result = install(false);
         let _ = tx.send(Event::Done(result));
         ctx.request_repaint();
     });
 }
 
-fn install() -> Result<bool, String> {
+/// Updates the installed OpenVPN to the embedded version, keeping the
+/// components already installed (the MSI upgrades the installed product).
+pub fn update_in_background(tx: Sender<Event>, ctx: eframe::egui::Context) {
+    std::thread::spawn(move || {
+        let result = install(true);
+        let _ = tx.send(Event::Done(result));
+        ctx.request_repaint();
+    });
+}
+
+/// `update`: no component list, so the upgrade keeps what the user installed
+/// (with ADDLOCAL it would remove, e.g., an OpenVPN GUI installed by them).
+fn install(update: bool) -> Result<bool, String> {
     if !is_available() {
         return Err(tr!(
             "Esta compilação não tem o instalador embutido.",
@@ -69,8 +81,9 @@ fn install() -> Result<bool, String> {
             .join("System32")
             .join("msiexec.exe");
     let params = format!(
-        "/i {} /qn /norestart {FEATURES} /l*v {}",
+        "/i {} /qn /norestart {} /l*v {}",
         super::service::argumento(&msi_path.to_string_lossy()),
+        if update { "" } else { FEATURES },
         super::service::argumento(&log.to_string_lossy())
     );
     let resultado = super::elevate::executar_como_admin(&msiexec, &params);

@@ -9,7 +9,8 @@
 //! - `dialogs`: native dialogs (messages, questions, open/save file)
 //! - `installer`: OpenVPN installation (embedded MSI on Windows)
 //! - `locale`: interface language and local time of the system
-//! - `openvpn`: where OpenVPN is installed and where the configs usually are
+//! - `openvpn`: where OpenVPN is installed, its version (and the minimum
+//!   recommended), and where the configs usually are
 //! - `paths`: where the app keeps its data
 //! - `renderer`: graphics API that draws the window
 //! - `routing`: the routing table and the interface of an address

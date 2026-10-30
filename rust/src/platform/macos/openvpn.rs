@@ -25,3 +25,14 @@ pub fn pastas_de_config() -> Vec<PathBuf> {
     let home = super::paths::pasta_home();
     vec![home.join("Downloads"), home]
 }
+
+/// The app brings its own, current OpenVPN: nothing to warn about.
+pub const RECOMMENDED_MINIMUM: Option<crate::openvpn_version::Version> = None;
+
+/// Not used on macOS (the app brings OpenVPN).
+pub const UPDATE_HELP_URL: &str = PAGINA_DE_DOWNLOAD;
+
+/// Not read on macOS: the OpenVPN inside the app is always current.
+pub fn version_output(_path: &std::path::Path) -> Option<String> {
+    None
+}
