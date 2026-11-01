@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "vpn"
 version = "1.5.3"
 edition = "2021"
@@ -61,7 +61,7 @@ qrcode = "0.14"
 ttf-parser = "0.25"
 
 [build-dependencies]
-embed-resource = "2"
+embed-resource = "3"
 
 [profile.release]
 opt-level = "z"
